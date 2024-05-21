@@ -174,8 +174,10 @@ void print_directory_sequence(FILE* fp, int dirSector){
         }
         remove_spaces(directory.filename);
         read_attributes(directory.attributes, &attributes);
-        if(attributes.subdirectory)
+        if(attributes.subdirectory){
             printf("subdirectory: %s\n", directory.filename);
+            printf("----\n");
+        }
         else
             printf("filename: %s.%s\n", directory.filename, directory.extension);
         // printf("time: %hu date: %hu\n", directory.creationTime, directory.creationDate); //pag26-> https://academy.cba.mit.edu/classes/networking_communications/SD/FAT.pdf
@@ -188,7 +190,43 @@ void print_directory_sequence(FILE* fp, int dirSector){
         }
         else
             print_cluster_sequence(fp, directory.firstLogicalCluster, cluster);
-        printf("----\n");
+        dirNum++;
+    }
+}
+
+void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+    int dirNum = 0;
+    while(1){
+        memset(cluster, 0, CLUSTER_SIZE+1);
+        read_directory(fp, dirSector, dirNum, &directory);
+        int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+        if(filename_int == 0xE5)
+            continue;
+        else if(filename_int == 0x00)
+            break;
+        
+        for(int i = 0; i < subLevel; i++)
+            printf("|");
+
+
+        remove_spaces(directory.filename);
+        read_attributes(directory.attributes, &attributes);
+
+        if(subLevel)
+            printf("-");
+            
+        if(attributes.subdirectory){
+            printf("subdirectory: %s\n", directory.filename);
+        }
+        else
+            printf("filename: %s.%s\n", directory.filename, directory.extension);
+
+        if(attributes.subdirectory && strcmp(directory.filename, ".") && strcmp(directory.filename, "..")){ //Verificar com strcmp . e .. (preguica)
+            print_directory_sequence_short(fp, directory.firstLogicalCluster+33-2, subLevel+1);
+        }
         dirNum++;
     }
 }
@@ -227,13 +265,13 @@ int main(int argc, char* argv[]){
     //     }
     // }
     // printf("Certo\n");
-    printf("Tabela FAT:\n");
-    for(int i = 0; i < 8; i++){
-        printf("%d: %X\n", i, get_entry(arqFat, i));
-    }
-    printf("\n");
+    // printf("Tabela FAT:\n");
+    // for(int i = 0; i < 8; i++){
+    //     printf("%d: %X\n", i, get_entry(arqFat, i));
+    // }
+    // printf("\n");
 
-    print_directory_sequence(arqFat, ROOT_DIR_SECTOR);
+    print_directory_sequence_short(arqFat, ROOT_DIR_SECTOR, 0);
 
     return 0;
 }
