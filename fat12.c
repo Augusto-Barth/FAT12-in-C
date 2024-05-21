@@ -88,7 +88,17 @@ void remove_spaces(char* string){
 
 int main(int argc, char* argv[]){
 
-    FILE *arqFat = fopen("fat12subdir.img", "rb");
+    if(argc != 2){
+        printf("Usage: %s path-to-fat12.img\n", argv[0]);
+        exit(1);
+    }
+
+    FILE *arqFat = fopen(argv[1], "rb");
+
+    if(arqFat == NULL){
+        printf("Unable to open %s\n", argv[1]);
+        exit(1);
+    }
 
     // unsigned char *buffer = malloc(512);
 
@@ -149,7 +159,10 @@ int main(int argc, char* argv[]){
     while(1){
         read_directory(arqFat, i, &directory);
         int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
-        if(filename_int == 0x00){
+        if(filename_int == 0xE5){
+            printf("Vazio\n");
+        }
+        else if(filename_int == 0x00){
             printf("Fim\n");
             break;
         }
