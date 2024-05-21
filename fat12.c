@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #define CLUSTER_SIZE 512
 #define ROOT_DIR_SECTOR 19
@@ -104,12 +105,13 @@ void read_directory(FILE* fp, int dirSector, int dirNum, fat12_dir* directory){
     fread(&directory->fileSize, 4, 1, fp);
 }
 
-void remove_spaces(char* string){
+int remove_spaces(char* string){
     int i = 0;
     while(string[i] != ' '){
         i++;
     }
     string[i] = 0;
+    return i;
 }
 
 void read_attributes(unsigned char attributes_byte, fat12_dir_attr* attributes){
@@ -217,7 +219,7 @@ void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
 
         if(subLevel)
             printf("-");
-            
+
         if(attributes.subdirectory){
             printf("subdirectory: %s\n", directory.filename);
         }
@@ -228,6 +230,143 @@ void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
             print_directory_sequence_short(fp, directory.firstLogicalCluster+33-2, subLevel+1);
         }
         dirNum++;
+    }
+}
+
+void print_directory_short(FILE* fp, int dirSector, int subLevel){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+    int dirNum = 0;
+    while(1){
+        memset(cluster, 0, CLUSTER_SIZE+1);
+        read_directory(fp, dirSector, dirNum, &directory);
+        int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+        if(filename_int == 0xE5)
+            continue;
+        else if(filename_int == 0x00)
+            break;
+        
+        for(int i = 0; i < subLevel; i++)
+            printf("|");
+
+
+        remove_spaces(directory.filename);
+        read_attributes(directory.attributes, &attributes);
+
+        if(subLevel)
+            printf("-");
+
+        if(attributes.subdirectory){
+            printf("subdirectory: %s\n", directory.filename);
+        }
+        else
+            printf("filename: %s.%s\n", directory.filename, directory.extension);
+        dirNum++;
+    }
+}
+
+void read_file(FILE* fp, int dirSector, unsigned char* filename){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+    unsigned char* fullFilename = (unsigned char*)malloc(12);
+    int dirNum = 0, pos = 0;
+    while(1){
+        if(filename[pos] == 0)
+            break;
+        filename[pos] = toupper(filename[pos]);
+        pos++;
+    }
+
+    while(1){
+        memset(cluster, 0, CLUSTER_SIZE+1);
+        memset(fullFilename, 0, 12);
+        read_directory(fp, dirSector, dirNum, &directory);
+        int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+        if(filename_int == 0xE5){
+            continue;
+        }
+        else if(filename_int == 0x00){
+            printf("%s nao encontrado\n", filename);
+            break;
+        }
+
+        int stop = remove_spaces(directory.filename);
+        strcpy(fullFilename, directory.filename);
+        read_attributes(directory.attributes, &attributes);
+        
+        fullFilename[stop++] = '.';
+        for(int i = 0; i < 3; i++){
+            fullFilename[stop+i] = directory.extension[i];
+        }
+        remove_spaces(fullFilename); // nojo
+
+        if(strcmp(filename, fullFilename)){
+            dirNum++;
+            continue;
+        }
+        //printf("Right\n");
+        if(attributes.subdirectory){
+            printf("%s eh um diretorio\n", directory.filename);
+        }
+        else
+            print_cluster_sequence(fp, directory.firstLogicalCluster, cluster);
+        
+        return;
+    }
+}
+
+void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+    unsigned char* fullFilename = (unsigned char*)malloc(12);
+    int dirNum = 0, pos = 0;
+
+    while(1){
+        if(directoryName[pos] == 0)
+            break;
+        directoryName[pos] = toupper(directoryName[pos]);
+        pos++;
+    }
+
+    while(1){
+        memset(cluster, 0, CLUSTER_SIZE+1);
+        memset(fullFilename, 0, 12);
+        read_directory(fp, *dirSector, dirNum, &directory);
+        int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+        if(filename_int == 0xE5){
+            continue;
+        }
+        else if(filename_int == 0x00){
+            printf("%s nao encontrado\n", directoryName);
+            break;
+        }
+
+        int stop = remove_spaces(directory.filename);
+        strcpy(fullFilename, directory.filename);
+        read_attributes(directory.attributes, &attributes);
+        
+        // Segundo o PDF diretorios podem ter extensoes (???????????)
+        // fullFilename[stop++] = '.';
+        // for(int i = 0; i < 3; i++){
+        //     fullFilename[stop+i] = directory.extension[i];
+        // }
+        // remove_spaces(fullFilename); // nojo
+
+        if(strcmp(directoryName, fullFilename)){
+            dirNum++;
+            continue;
+        }
+        //printf("Right\n");
+        if(attributes.subdirectory){
+            *dirSector = (directory.firstLogicalCluster == 0) ? ROOT_DIR_SECTOR : (directory.firstLogicalCluster + 33 - 2);
+        }
+        else
+            printf("%s nao eh um diretorio\n", directory.filename);
+        
+        return;
     }
 }
 
@@ -271,7 +410,38 @@ int main(int argc, char* argv[]){
     // }
     // printf("\n");
 
-    print_directory_sequence_short(arqFat, ROOT_DIR_SECTOR, 0);
+    //print_directory_sequence_short(arqFat, ROOT_DIR_SECTOR, 0);
+    //printf("--------------------\n");
+
+    int currentWorkingDirSector = ROOT_DIR_SECTOR; // Mudar com cd
+
+    unsigned char comando[32] = {0};
+    unsigned char argumento[32] = {0};
+    while(1){
+        memset(comando, 0, 32);
+        memset(argumento, 0, 32);
+        printf(">");
+        scanf("%s", comando);
+        if(!strcmp(comando, "cat")){
+            scanf("%s", argumento);
+            read_file(arqFat, currentWorkingDirSector, argumento);
+            //printf("\n");
+        }
+        else if(!strcmp(comando, "ls")){
+            print_directory_short(arqFat, currentWorkingDirSector, 0);
+        }
+        else if(!strcmp(comando, "ls-1")){
+            print_directory_sequence_short(arqFat, ROOT_DIR_SECTOR, 0);
+        }
+        else if(!strcmp(comando, "cd")){
+            scanf("%s", argumento);
+            change_directory(arqFat, &currentWorkingDirSector, argumento);
+        }
+        else if(comando[0] == 'q')
+            break;
+        else
+            printf("Comando desconhecido\n");
+    }
 
     return 0;
 }
