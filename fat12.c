@@ -50,10 +50,10 @@ typedef struct fat12_directory_attributes
 
 int get_entry(FILE* fp, int position){
     // Entrar com a posicao absoluta no arquivo e verificar se esta dentro de uma
-    // tabela FAT (de preferencia a primeira)
+    // tabela FAT (de preferencia a primeira) (NAO)
     // Tambem fazer a verificacao se a entrada eh a mesma nas duas tabelas (nao sei
     // se eh assim que funciona na FAT12)
-    // Talvez preservar a posicao do ponteiro de arquivo no fim da funcao (ftell e fseek)
+    // Talvez preservar a posicao do ponteiro de arquivo no fim da funcao (ftell e fseek) (NAO)
     int entry = 0;
     unsigned char full, half;
     if(position%2 == 0){
@@ -107,7 +107,7 @@ void read_directory(FILE* fp, int dirSector, int dirNum, fat12_dir* directory){
 
 int remove_spaces(char* string){
     int i = 0;
-    while(string[i] != ' '){
+    while(string[i] != ' ' && string[i] != 0){
         i++;
     }
     string[i] = 0;
@@ -126,6 +126,22 @@ void read_attributes(unsigned char attributes_byte, fat12_dir_attr* attributes){
 void read_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
     fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
     fread(cluster, CLUSTER_SIZE, 1, fp);
+}
+
+void print_date(short date){
+    unsigned char day, month, year;
+    day = date&0b11111;
+    month = (date&(0b1111<<5))>>5;
+    year = (date&(0b1111111<<9))>>9;
+    printf("%02d/%02d/%d\n", day, month, year+1980);
+}
+
+void print_time(short time){
+    unsigned char seconds, minutes, hours;
+    seconds = (time&0b11111)*2;
+    minutes = (time&(0b111111<<5))>>5;
+    hours = (time&(0b11111<<11))>>11;
+    printf("%02d:%02d:%02d\n", hours, minutes, seconds);
 }
 
 void print_cluster_sequence(FILE* fp, int firstLogicalCluster, unsigned char* cluster){
@@ -211,7 +227,7 @@ void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
             break;
         
         for(int i = 0; i < subLevel; i++)
-            printf("|");
+            printf("|"); // printar o caminho completo Ex.:"/SUBDIR/TESTE.C"
 
 
         remove_spaces(directory.filename);
@@ -293,25 +309,40 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
         }
 
         int stop = remove_spaces(directory.filename);
+        // printf("%s -> ", directory.filename);
+        // printf("stop: %d\n", stop);
         strcpy(fullFilename, directory.filename);
         read_attributes(directory.attributes, &attributes);
-        
-        fullFilename[stop++] = '.';
-        for(int i = 0; i < 3; i++){
-            fullFilename[stop+i] = directory.extension[i];
+
+        // if(!(directory.extension[0] == ' '))
+        //     fullFilename[stop++] = '.';
+        // for(int i = 0; i < 3; i++){
+        //     fullFilename[stop+i] = directory.extension[i];
+        // }
+        // remove_spaces(fullFilename); // nojo
+
+        if(!(directory.extension[0] == ' ')){
+            fullFilename[stop++] = '.';
+            for(int i = 0; i < 3; i++){
+                fullFilename[stop+i] = directory.extension[i];
+            }
+            remove_spaces(fullFilename);
         }
-        remove_spaces(fullFilename); // nojo
+        //printf("FULLNAME: %s\n", fullFilename);
 
         if(strcmp(filename, fullFilename)){
             dirNum++;
             continue;
         }
-        //printf("Right\n");
+        
         if(attributes.subdirectory){
             printf("%s eh um diretorio\n", directory.filename);
         }
-        else
+        else{
             print_cluster_sequence(fp, directory.firstLogicalCluster, cluster);
+            print_time(directory.lastWriteTime);
+            print_date(directory.lastWriteDate);    
+        }
         
         return;
     }
@@ -348,18 +379,19 @@ void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
         strcpy(fullFilename, directory.filename);
         read_attributes(directory.attributes, &attributes);
         
-        // Segundo o PDF diretorios podem ter extensoes (???????????)
-        // fullFilename[stop++] = '.';
-        // for(int i = 0; i < 3; i++){
-        //     fullFilename[stop+i] = directory.extension[i];
-        // }
-        // remove_spaces(fullFilename); // nojo
+        if(!(directory.extension[0] == ' ')){
+            fullFilename[stop++] = '.';
+            for(int i = 0; i < 3; i++){
+                fullFilename[stop+i] = directory.extension[i];
+            }
+            remove_spaces(fullFilename);
+        }
 
         if(strcmp(directoryName, fullFilename)){
             dirNum++;
             continue;
         }
-        //printf("Right\n");
+        
         if(attributes.subdirectory){
             *dirSector = (directory.firstLogicalCluster == 0) ? ROOT_DIR_SECTOR : (directory.firstLogicalCluster + 33 - 2);
         }
