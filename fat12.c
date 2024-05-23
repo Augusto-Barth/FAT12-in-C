@@ -2,51 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include "fat12.h"
 
 #define CLUSTER_SIZE 512
 #define ROOT_DIR_SECTOR 19
-
-typedef struct fat12_bootsector
-{
-    unsigned char ignorar[3];
-    unsigned char oem[8];
-    short tamanhoSetor;
-    unsigned char setorPorCluster;
-    short NumSetoresRes;
-    unsigned char NumFats;
-    unsigned char ignorar2[2];
-    short quantSetoresDisco;
-    unsigned char mediaDescriptor;
-    short setoresPorFat;
-    unsigned char ignorar4[30];
-    unsigned char tipoDeSistema[8];
-}fat12_bs;
-
-typedef struct fat12_directory
-{
-    unsigned char filename[8+1]; // \0
-    unsigned char extension[3];
-    unsigned char attributes;
-    unsigned char reserved[2];
-    short creationTime;
-    short creationDate;
-    short lastAccessDate;
-    short ignore;
-    short lastWriteTime;
-    short lastWriteDate;
-    short firstLogicalCluster;
-    int fileSize;
-}fat12_dir;
-
-typedef struct fat12_directory_attributes
-{
-    unsigned char readOnly;
-    unsigned char hidden;
-    unsigned char system;
-    unsigned char volumeLabel;
-    unsigned char subdirectory;
-    unsigned char archive;
-}fat12_dir_attr;
+fat12_bs bootsector;
 
 int get_entry(FILE* fp, int position){
     // Entrar com a posicao absoluta no arquivo e verificar se esta dentro de uma
@@ -80,7 +40,7 @@ void read_bootsector(FILE* fp, fat12_bs* bootsector){
     fread(&bootsector->setorPorCluster, 1, 1, fp); 
     fread(&bootsector->NumSetoresRes, 2, 1, fp); 
     fread(&bootsector->NumFats, 1, 1, fp); 
-    fread(&bootsector->ignorar2, 2, 1, fp); 
+    fread(&bootsector->tamanhoRoot, 2, 1, fp); 
     fread(&bootsector->quantSetoresDisco, 2, 1, fp); 
     fread(&bootsector->mediaDescriptor, 1, 1, fp); 
     fread(&bootsector->setoresPorFat, 2, 1, fp); 
@@ -88,7 +48,7 @@ void read_bootsector(FILE* fp, fat12_bs* bootsector){
     fread(&bootsector->tipoDeSistema, 8, 1, fp); 
 }
 
-void read_directory(FILE* fp, int dirSector, int dirNum, fat12_dir* directory){
+unsigned char read_directory(FILE* fp, int dirSector, int dirNum, fat12_dir* directory){
     fseek(fp, CLUSTER_SIZE*dirSector + 32*dirNum, SEEK_SET);
     fread(directory->filename, 8, 1, fp);
     directory->filename[8] = 0;
@@ -103,6 +63,7 @@ void read_directory(FILE* fp, int dirSector, int dirNum, fat12_dir* directory){
     fread(&directory->lastWriteDate, 2, 1, fp);
     fread(&directory->firstLogicalCluster, 2, 1, fp);
     fread(&directory->fileSize, 4, 1, fp);
+    return directory->filename[0];
 }
 
 int remove_spaces(char* string){
@@ -180,8 +141,7 @@ void print_directory_sequence(FILE* fp, int dirSector){
     int dirNum = 0;
     while(1){
         memset(cluster, 0, CLUSTER_SIZE+1);
-        read_directory(fp, dirSector, dirNum, &directory);
-        int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
         //printf("dirSector: %d filename: %s\n", dirSector, directory.filename);
         if(filename_int == 0xE5){
             printf("Vazio\n");
@@ -219,8 +179,7 @@ void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
     int dirNum = 0;
     while(1){
         memset(cluster, 0, CLUSTER_SIZE+1);
-        read_directory(fp, dirSector, dirNum, &directory);
-        int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
         if(filename_int == 0xE5)
             continue;
         else if(filename_int == 0x00)
@@ -254,12 +213,15 @@ void print_directory_short(FILE* fp, int dirSector, int subLevel){
     fat12_dir_attr attributes;
     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
     int dirNum = 0;
+
     while(1){
         memset(cluster, 0, CLUSTER_SIZE+1);
-        read_directory(fp, dirSector, dirNum, &directory);
-        int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
-        if(filename_int == 0xE5)
+        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
+        
+        if(filename_int == 0xE5){
+            dirNum++;
             continue;
+        }
         else if(filename_int == 0x00)
             break;
         
@@ -288,6 +250,7 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
     unsigned char* fullFilename = (unsigned char*)malloc(12);
     int dirNum = 0, pos = 0;
+
     while(1){
         if(filename[pos] == 0)
             break;
@@ -298,8 +261,7 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
     while(1){
         memset(cluster, 0, CLUSTER_SIZE+1);
         memset(fullFilename, 0, 12);
-        read_directory(fp, dirSector, dirNum, &directory);
-        int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
         if(filename_int == 0xE5){
             continue;
         }
@@ -309,17 +271,9 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
         }
 
         int stop = remove_spaces(directory.filename);
-        // printf("%s -> ", directory.filename);
-        // printf("stop: %d\n", stop);
+
         strcpy(fullFilename, directory.filename);
         read_attributes(directory.attributes, &attributes);
-
-        // if(!(directory.extension[0] == ' '))
-        //     fullFilename[stop++] = '.';
-        // for(int i = 0; i < 3; i++){
-        //     fullFilename[stop+i] = directory.extension[i];
-        // }
-        // remove_spaces(fullFilename); // nojo
 
         if(!(directory.extension[0] == ' ')){
             fullFilename[stop++] = '.';
@@ -328,7 +282,6 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
             }
             remove_spaces(fullFilename);
         }
-        //printf("FULLNAME: %s\n", fullFilename);
 
         if(strcmp(filename, fullFilename)){
             dirNum++;
@@ -402,6 +355,160 @@ void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
     }
 }
 
+int get_first_free_directory_entry(FILE* fp, int dirSector, int* freeDirNum){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    int dirNum = 0, maxDirNum = CLUSTER_SIZE/32;
+    if(dirSector == ROOT_DIR_SECTOR)
+        maxDirNum = bootsector.tamanhoRoot;
+
+    while(maxDirNum--){
+        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
+        if(filename_int == 0xE5 || filename_int == 0x00){
+            *freeDirNum = dirNum;
+            return 1;
+        }
+        dirNum++;
+    }
+    *freeDirNum = -1;
+    return 0;
+}
+
+void print_fat_table(FILE* fp){
+    for(int i = 0; i < CLUSTER_SIZE; i++){
+        if(i % 8 == 0 && i != 0)
+            printf("\n");
+        printf("%03X ", get_entry(fp, i));
+    }
+    printf("\n");
+}
+
+void remove_entry(FILE* fp, int position){
+    unsigned char full, half, buffer;
+    if(position%2 == 0){
+        fseek(fp, CLUSTER_SIZE*1 + (3*position)/2+1, SEEK_SET);
+        fread(&half, 1, 1, fp);
+        buffer = half&0b11110000;
+        fwrite(&buffer, 1, 1, fp);
+
+        fseek(fp, CLUSTER_SIZE*1 + (3*position)/2, SEEK_SET);
+        fread(&full, 1, 1, fp);
+        buffer = full&0b00000000;
+        fwrite(&buffer, 1, 1, fp);
+    }
+    else{
+        fseek(fp, CLUSTER_SIZE*1 + (3*position)/2, SEEK_SET);
+        fread(&half, 1, 1, fp);
+        buffer = half&0b00001111;
+        fwrite(&buffer, 1, 1, fp);
+
+        fseek(fp, CLUSTER_SIZE*1 + (3*position)/2+1, SEEK_SET);
+        fread(&full, 1, 1, fp);
+        buffer = full&0b00000000;
+        fwrite(&buffer, 1, 1, fp);
+    }
+}
+
+void remove_cluster(FILE* fp, int logicalCluster){
+    unsigned char buffer[512] = {0};
+    fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
+    fwrite(&buffer, 512, 1, fp);
+}
+
+
+void remove_cluster_sequence(FILE* fp, int firstLogicalCluster){
+    int logicalCluster = firstLogicalCluster;
+    int entry = get_entry(fp, logicalCluster);
+    remove_cluster(fp, logicalCluster);
+
+    if(entry == 0x00){
+        // printf("Unused\n");
+        return;
+    }
+    else if(entry >= 0xFF0 && entry <= 0xFF6){
+        // printf("Reserved Cluster\n");
+        return;
+    }
+    else if(entry == 0xFF7){
+        // printf("Bad Cluster\n");
+        return;
+    }
+    else if(entry >= 0xFF8 && entry <= 0xFFF){
+        //printf("Last Cluster in a file\n");
+        remove_entry(fp, logicalCluster);
+        return;
+    }
+    else{
+        remove_cluster_sequence(fp, entry);
+    }
+    remove_entry(fp, logicalCluster);
+}
+
+void remove_file(FILE* fp, int dirSector, unsigned char* filename){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    unsigned char* fullFilename = (unsigned char*)malloc(12);
+    int dirNum = 0, pos = 0;
+    unsigned char buffer[32] = {0};
+
+    fat12_dir directory_next;
+    while(1){
+        if(filename[pos] == 0)
+            break;
+        filename[pos] = toupper(filename[pos]);
+        pos++;
+    }
+
+    while(1){
+        memset(fullFilename, 0, 12);
+        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
+        if(filename_int == 0xE5){
+            continue;
+        }
+        else if(filename_int == 0x00){
+            printf("%s nao encontrado\n", filename);
+            break;
+        }
+
+        int stop = remove_spaces(directory.filename);
+
+        strcpy(fullFilename, directory.filename);
+        read_attributes(directory.attributes, &attributes);
+
+        if(!(directory.extension[0] == ' ')){
+            fullFilename[stop++] = '.';
+            for(int i = 0; i < 3; i++){
+                fullFilename[stop+i] = directory.extension[i];
+            }
+            remove_spaces(fullFilename);
+        }
+        // TODO separar tudo aqui em cima em uma funcao find_file que retorna diretorio, fullFilename e tal
+        if(strcmp(filename, fullFilename)){
+            dirNum++;
+            continue;
+        }
+        
+        if(attributes.subdirectory){
+            printf("%s eh um diretorio\n", directory.filename);
+        }
+        else{
+            remove_cluster_sequence(fp, directory.firstLogicalCluster);
+            fseek(fp, CLUSTER_SIZE*dirSector + 32*dirNum, SEEK_SET);
+            fwrite(&buffer, 32, 1, fp);
+            int filename_int_next = read_directory(fp, dirSector, dirNum+1, &directory_next);
+            printf("NEXT: %X\n", filename_int_next);
+            if(filename_int_next != 0x00){
+                int bufferInt = 0xE5;
+                fseek(fp, CLUSTER_SIZE*dirSector + 32*dirNum, SEEK_SET);
+                fwrite(&bufferInt, sizeof(bufferInt), 1, fp);
+            }
+            
+        }
+        
+        return;
+    }
+}
+
 int main(int argc, char* argv[]){
 
     if(argc != 2){
@@ -409,14 +516,13 @@ int main(int argc, char* argv[]){
         exit(1);
     }
 
-    FILE *arqFat = fopen(argv[1], "rb");
+    FILE *arqFat = fopen(argv[1], "rb+");
 
     if(arqFat == NULL){
         printf("Unable to open %s\n", argv[1]);
         exit(1);
     }
 
-    fat12_bs bootsector;
     read_bootsector(arqFat, &bootsector);
 
 
@@ -447,8 +553,10 @@ int main(int argc, char* argv[]){
 
     int currentWorkingDirSector = ROOT_DIR_SECTOR; // Mudar com cd
 
+    print_fat_table(arqFat);
     unsigned char comando[32] = {0};
     unsigned char argumento[32] = {0};
+    int retorno = 0;
     while(1){
         memset(comando, 0, 32);
         memset(argumento, 0, 32);
@@ -469,8 +577,20 @@ int main(int argc, char* argv[]){
             scanf("%s", argumento);
             change_directory(arqFat, &currentWorkingDirSector, argumento);
         }
-        else if(comando[0] == 'q')
+        else if(!strcmp(comando, "free")){
+            if(get_first_free_directory_entry(arqFat, currentWorkingDirSector, &retorno))
+                printf("Primeiro endereco livre: %d\n", retorno);
+            else
+                printf("Nao ha espacos livres no diretorio atual\n");
+        }
+        else if(!strcmp(comando, "rm")){
+            scanf("%s", argumento);
+            remove_file(arqFat, currentWorkingDirSector, argumento);
+        }
+        else if(comando[0] == 'q'){
+            fclose(arqFat);
             break;
+        }
         else
             printf("Comando desconhecido\n");
     }
