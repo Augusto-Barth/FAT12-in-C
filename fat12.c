@@ -513,7 +513,7 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
     unsigned char* fullFilename = (unsigned char*)malloc(12);
     int dirNum = 0, pos = 0;
 
-    FILE* destFp = fopen(destinationFilename, "ab");
+    FILE* destFp = fopen(destinationFilename, "wb");
     if(destFp == NULL){
         printf("Unable to open %s\n", destinationFilename);
         return;
