@@ -1,5 +1,5 @@
-#ifndef fat12
-#define fat12
+#ifndef FAT12
+#define FAT12
 
 typedef struct fat12_bootsector
 {

@@ -1,8 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
+
 #include "fat12.h"
+#include "utils.h"
 
 #define CLUSTER_SIZE 512
 #define ROOT_DIR_SECTOR 19
@@ -66,15 +67,6 @@ unsigned char read_directory(FILE* fp, int dirSector, int dirNum, fat12_dir* dir
     return directory->filename[0];
 }
 
-int remove_spaces(char* string){
-    int i = 0;
-    while(string[i] != ' ' && string[i] != 0){
-        i++;
-    }
-    string[i] = 0;
-    return i;
-}
-
 void read_attributes(unsigned char attributes_byte, fat12_dir_attr* attributes){
     attributes->readOnly = attributes_byte & 0x01;
     attributes->hidden = attributes_byte & 0x02;
@@ -88,22 +80,6 @@ void read_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
     //limpar com memset?
     fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
     fread(cluster, CLUSTER_SIZE, 1, fp);
-}
-
-void print_date(short date){
-    unsigned char day, month, year;
-    day = date&0b11111;
-    month = (date&(0b1111<<5))>>5;
-    year = (date&(0b1111111<<9))>>9;
-    printf("%02d/%02d/%d\n", day, month, year+1980);
-}
-
-void print_time(short time){
-    unsigned char seconds, minutes, hours;
-    seconds = (time&0b11111)*2;
-    minutes = (time&(0b111111<<5))>>5;
-    hours = (time&(0b11111<<11))>>11;
-    printf("%02d:%02d:%02d\n", hours, minutes, seconds);
 }
 
 void print_cluster_sequence(FILE* fp, int firstLogicalCluster, unsigned char* cluster){
@@ -176,10 +152,8 @@ void print_directory_sequence(FILE* fp, int dirSector){
 void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
     fat12_dir directory;
     fat12_dir_attr attributes;
-    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
     int dirNum = 0;
     while(1){
-        memset(cluster, 0, CLUSTER_SIZE+1);
         int filename_int = read_directory(fp, dirSector, dirNum, &directory);
         if(filename_int == 0xE5){
             dirNum++;
@@ -214,11 +188,9 @@ void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
 void print_directory_short(FILE* fp, int dirSector, int subLevel){
     fat12_dir directory;
     fat12_dir_attr attributes;
-    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
     int dirNum = 0;
 
     while(1){
-        memset(cluster, 0, CLUSTER_SIZE+1);
         int filename_int = read_directory(fp, dirSector, dirNum, &directory);
         
         if(filename_int == 0xE5){
@@ -254,12 +226,7 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
     unsigned char* fullFilename = (unsigned char*)malloc(12);
     int dirNum = 0, pos = 0;
 
-    while(1){
-        if(filename[pos] == 0)
-            break;
-        filename[pos] = toupper(filename[pos]);
-        pos++;
-    }
+    to_upper(filename);
 
     while(1){
         memset(cluster, 0, CLUSTER_SIZE+1);
@@ -312,12 +279,7 @@ void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
     unsigned char* fullFilename = (unsigned char*)malloc(12);
     int dirNum = 0, pos = 0;
 
-    while(1){
-        if(directoryName[pos] == 0)
-            break;
-        directoryName[pos] = toupper(directoryName[pos]);
-        pos++;
-    }
+    to_upper(directoryName);
 
     while(1){
         memset(cluster, 0, CLUSTER_SIZE+1);
@@ -462,12 +424,7 @@ void remove_file(FILE* fp, int dirSector, unsigned char* filename){
     unsigned char buffer[32] = {0};
 
     fat12_dir directory_next;
-    while(1){
-        if(filename[pos] == 0)
-            break;
-        filename[pos] = toupper(filename[pos]);
-        pos++;
-    }
+    to_upper(filename);
 
     while(1){
         memset(fullFilename, 0, 12);
@@ -562,12 +519,7 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
         return;
     }
 
-    while(1){
-        if(filename[pos] == 0)
-            break;
-        filename[pos] = toupper(filename[pos]);
-        pos++;
-    }
+    to_upper(filename);
 
     while(1){
         memset(cluster, 0, CLUSTER_SIZE+1);
