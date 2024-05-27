@@ -185,6 +185,77 @@ void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
     }
 }
 
+// void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
+//     fat12_dir directory;
+//     fat12_dir directory_next;
+//     fat12_dir_attr attributes;
+//     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+//     int dirNum = 0;
+//     if(!subLevel)
+//         printf(".");
+//     while(1){
+//         memset(cluster, 0, CLUSTER_SIZE+1);
+//         read_directory(fp, dirSector, dirNum, &directory);
+//         int filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+//         if(filename_int == 0xE5)
+//             continue;
+//         else if(filename_int == 0x00){
+//             if(subLevel == 0)
+//                 printf("\r└\n");
+//             break;
+//         }
+        
+//         for(int i = 0; i < subLevel-1; i++){
+//             // printf("|"); // printar o caminho completo Ex.:"/SUBDIR/TESTE.C"
+//             printf(" ");
+//         }
+//         printf("\n├");
+
+//         // read_directory(fp, dirSector, dirNum+1, &directory);
+//         // filename_int = (directory.filename[0] << 7) + (directory.filename[1] << 6) + (directory.filename[2] << 5) + (directory.filename[3] << 4) + (directory.filename[4] << 3) + (directory.filename[5] << 2) + (directory.filename[6] << 1) + directory.filename[7];
+
+//         // if(filename_int == 0x00){
+//         //     if(subLevel == 0)
+//         //         printf("\r└\n");
+//         //     break;
+//         // }
+
+//         // "├──";
+//         // "├";
+//         // "└";
+
+//         remove_spaces(directory.filename);
+//         read_attributes(directory.attributes, &attributes);
+
+//         if(subLevel){
+//             // printf("-");
+//             printf("─");
+//         }
+
+//         if(attributes.subdirectory){
+//             printf("subdirectory: %s", directory.filename);
+//         }
+//         else
+//             printf("filename: %s.%s", directory.filename, directory.extension);
+
+
+//         read_directory(fp, dirSector, dirNum+1, &directory_next);
+//         int filename_int_next = (directory_next.filename[0] << 7) + (directory_next.filename[1] << 6) + (directory_next.filename[2] << 5) + (directory_next.filename[3] << 4) + (directory_next.filename[4] << 3) + (directory_next.filename[5] << 2) + (directory_next.filename[6] << 1) + directory_next.filename[7];
+
+//         if(filename_int_next == 0x00){
+//             if(subLevel == 0)
+//                 printf("\r└\n");
+//             break;
+//         }
+//         // printf("\n");
+
+//         if(attributes.subdirectory && strcmp(directory.filename, ".") && strcmp(directory.filename, "..")){
+//             print_directory_sequence_short(fp, directory.firstLogicalCluster+33-2, subLevel+1);
+//         }
+//         dirNum++;
+//     }
+// }
+
 void print_directory_short(FILE* fp, int dirSector, int subLevel){
     fat12_dir directory;
     fat12_dir_attr attributes;
@@ -466,8 +537,9 @@ void remove_file(FILE* fp, int dirSector, unsigned char* filename){
             int filename_int_next = read_directory(fp, dirSector, dirNum+1, &directory_next);
             //printf("NEXT: %X\n", filename_int_next);
             if(filename_int_next != 0x00){
-                int bufferInt = 0xE5;
+                short bufferInt = 0xE5;
                 fseek(fp, CLUSTER_SIZE*dirSector + 32*dirNum, SEEK_SET);
+                //printf("At: %X\n", CLUSTER_SIZE*dirSector + 32*dirNum);
                 fwrite(&bufferInt, sizeof(bufferInt), 1, fp);
             }
             
@@ -616,6 +688,7 @@ int main(int argc, char* argv[]){
     while(1){
         memset(comando, 0, 32);
         memset(argumento, 0, 32);
+        memset(argumento2, 0, 32);
         printf(">");
         scanf("%s", comando);
         if(!strcmp(comando, "cat")){
