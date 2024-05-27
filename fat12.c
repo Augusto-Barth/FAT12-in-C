@@ -5,6 +5,8 @@
 #include "fat12.h"
 #include "utils.h"
 
+#define MIN(x, y) x < y ? x : y
+
 #define CLUSTER_SIZE 512
 #define ROOT_DIR_SECTOR 19
 fat12_bs bootsector;
@@ -54,6 +56,7 @@ unsigned char read_directory(FILE* fp, int dirSector, int dirNum, fat12_dir* dir
     fread(directory->filename, 8, 1, fp);
     directory->filename[8] = 0;
     fread(&directory->extension, 3, 1, fp);
+    directory->extension[3] = 0;
     fread(&directory->attributes, 1, 1, fp);
     fread(&directory->reserved, 2, 1, fp);
     fread(&directory->creationTime, 2, 1, fp);
@@ -147,6 +150,7 @@ void print_directory_sequence(FILE* fp, int dirSector){
             print_cluster_sequence(fp, directory.firstLogicalCluster, cluster);
         dirNum++;
     }
+    free(cluster);
 }
 
 void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
@@ -324,7 +328,6 @@ void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
 
 int get_first_free_directory_entry(FILE* fp, int dirSector, int* freeDirNum){
     fat12_dir directory;
-    fat12_dir_attr attributes;
     int dirNum = 0, maxDirNum = CLUSTER_SIZE/32;
     if(dirSector == ROOT_DIR_SECTOR)
         maxDirNum = bootsector.tamanhoRoot;
@@ -472,18 +475,20 @@ void remove_file(FILE* fp, int dirSector, unsigned char* filename){
             }
             
         }
-        
+        free(fullFilename);
         return;
     }
 }
 
-void import_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, unsigned char* cluster){
+void export_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, unsigned char* cluster, int fileSize){
     int logicalCluster = firstLogicalCluster;
     int entry = get_entry(fp, logicalCluster);
     read_cluster(fp, logicalCluster, cluster);
-    // fwrite(cluster, CLUSTER_SIZE, 1, destFp);
-    fprintf(destFp, "%s", cluster);
-    memset(cluster, 0, CLUSTER_SIZE+1);
+    // printf("%d -> %d\n", firstLogicalCluster, MIN(fileSize, CLUSTER_SIZE));
+    fwrite(cluster, MIN(fileSize, CLUSTER_SIZE), 1, destFp);
+    fileSize -= CLUSTER_SIZE;
+    // fprintf(destFp, "%s", cluster);
+    memset(cluster, 0, CLUSTER_SIZE);
 
     if(entry == 0x00){
         //printf("Unused\n");
@@ -502,14 +507,14 @@ void import_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, un
         return;
     }
     else{
-        import_cluster_sequence(fp, destFp, entry, cluster);
+        export_cluster_sequence(fp, destFp, entry, cluster, fileSize);
     }
 }
 
-void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char* destinationFilename){
+void export_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char* destinationFilename){
     fat12_dir directory;
     fat12_dir_attr attributes;
-    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE);
     unsigned char* fullFilename = (unsigned char*)malloc(12);
     int dirNum = 0, pos = 0;
 
@@ -556,11 +561,73 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
             printf("%s eh um diretorio\n", directory.filename);
         }
         else{
-            import_cluster_sequence(fp, destFp, directory.firstLogicalCluster, cluster);
+            export_cluster_sequence(fp, destFp, directory.firstLogicalCluster, cluster, directory.fileSize);
             print_time(directory.lastWriteTime);
             print_date(directory.lastWriteDate);    
         }
+        free(fullFilename);
+        free(cluster);
         fclose(destFp);
+        return;
+    }
+}
+
+void print_details(FILE* fp, int dirSector, unsigned char* filename){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE);
+    unsigned char* fullFilename = (unsigned char*)malloc(12);
+    int dirNum = 0, pos = 0;
+
+    to_upper(filename);
+
+    while(1){
+        memset(cluster, 0, CLUSTER_SIZE);
+        memset(fullFilename, 0, 12);
+        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
+        if(filename_int == 0xE5){
+            dirNum++;
+            continue;
+        }
+        else if(filename_int == 0x00){
+            printf("%s nao encontrado\n", filename);
+            break;
+        }
+
+        int stop = remove_spaces(directory.filename);
+
+        strcpy(fullFilename, directory.filename);
+        read_attributes(directory.attributes, &attributes);
+        if(!(directory.extension[0] == ' ')){
+            fullFilename[stop++] = '.';
+            for(int i = 0; i < 3; i++){
+                fullFilename[stop+i] = directory.extension[i];
+            }
+            remove_spaces(fullFilename);
+        }
+        if(strcmp(filename, fullFilename)){
+            dirNum++;
+            continue;
+        }
+        
+        printf("Filename: %s\n", directory.filename);
+        printf("Extension: %s\n", directory.extension);
+        printf("Size: %d\n", directory.fileSize);
+        printf("First Logical Cluster: %d\n", directory.firstLogicalCluster);
+        printf("Archive: %s\n", attributes.archive ? "Yes" : "No");
+        printf("Hidden: %s\n", attributes.hidden ? "Yes" : "No");
+        printf("Read Only: %s\n", attributes.readOnly ? "Yes" : "No");
+        printf("Subdirectory: %s\n", attributes.subdirectory ? "Yes" : "No");
+        printf("System: %s\n", attributes.system ? "Yes" : "No");
+        printf("Volume Label: %s\n", attributes.volumeLabel ? "Yes" : "No");
+        printf("Creation: ");
+        print_date(directory.creationDate);
+        printf(" ");
+        print_time(directory.creationTime);
+        printf("\n");
+
+        free(cluster);
+        free(fullFilename);
         return;
     }
 }
@@ -616,12 +683,12 @@ int main(int argc, char* argv[]){
     while(1){
         memset(comando, 0, 32);
         memset(argumento, 0, 32);
+        memset(argumento2, 0, 32);
         printf(">");
         scanf("%s", comando);
         if(!strcmp(comando, "cat")){
             scanf("%s", argumento);
             read_file(arqFat, currentWorkingDirSector, argumento);
-            //printf("\n");
         }
         else if(!strcmp(comando, "ls")){
             print_directory_short(arqFat, currentWorkingDirSector, 0);
@@ -646,14 +713,18 @@ int main(int argc, char* argv[]){
         else if(!strcmp(comando, "fat")){
             print_fat_table(arqFat);
         }
-        else if(!strcmp(comando, "imp")){
+        else if(!strcmp(comando, "exp")){
             scanf("%s", argumento);
             scanf("%s", argumento2);
-            import_file(arqFat, currentWorkingDirSector, argumento, argumento2);
+            export_file(arqFat, currentWorkingDirSector, argumento, argumento2);
         }
         else if(comando[0] == 'q'){
             fclose(arqFat);
             break;
+        }
+        else if(!strcmp(comando, "det")){
+            scanf("%s", argumento);
+            print_details(arqFat, currentWorkingDirSector, argumento);
         }
         else
             printf("Comando desconhecido\n");
