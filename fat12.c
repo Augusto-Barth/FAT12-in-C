@@ -326,7 +326,7 @@ void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
     }
 }
 
-int get_first_free_directory_entry(FILE* fp, int dirSector, int* freeDirNum){
+int get_first_free_directory_entry(FILE* fp, int dirSector){
     fat12_dir directory;
     int dirNum = 0, maxDirNum = CLUSTER_SIZE/32;
     if(dirSector == ROOT_DIR_SECTOR)
@@ -335,13 +335,21 @@ int get_first_free_directory_entry(FILE* fp, int dirSector, int* freeDirNum){
     while(maxDirNum--){
         int filename_int = read_directory(fp, dirSector, dirNum, &directory);
         if(filename_int == 0xE5 || filename_int == 0x00){
-            *freeDirNum = dirNum;
-            return 1;
+            return dirNum;
         }
         dirNum++;
     }
-    *freeDirNum = -1;
-    return 0;
+    return -1;
+}
+
+int get_first_free_fat_entry(FILE* fp){
+    int entry;
+    for(int i = 0; i < CLUSTER_SIZE; i++){
+        entry = get_entry(fp, i);
+        if(entry == 0x00)
+            return i;
+    }
+    return -1;
 }
 
 void print_fat_table(FILE* fp){
@@ -527,7 +535,7 @@ void export_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
     to_upper(filename);
 
     while(1){
-        memset(cluster, 0, CLUSTER_SIZE+1);
+        memset(cluster, 0, CLUSTER_SIZE);
         memset(fullFilename, 0, 12);
         int filename_int = read_directory(fp, dirSector, dirNum, &directory);
         if(filename_int == 0xE5){
@@ -568,6 +576,129 @@ void export_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
         free(fullFilename);
         free(cluster);
         fclose(destFp);
+        return;
+    }
+}
+
+void import_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, unsigned char* cluster, int fileSize){
+    int logicalCluster = firstLogicalCluster;
+    int entry = get_entry(fp, logicalCluster);
+    read_cluster(fp, logicalCluster, cluster);
+    // printf("%d -> %d\n", firstLogicalCluster, MIN(fileSize, CLUSTER_SIZE));
+    fwrite(cluster, MIN(fileSize, CLUSTER_SIZE), 1, destFp);
+    fileSize -= CLUSTER_SIZE;
+    // fprintf(destFp, "%s", cluster);
+    memset(cluster, 0, CLUSTER_SIZE);
+
+    if(entry == 0x00){
+        //printf("Unused\n");
+        return;
+    }
+    else if(entry >= 0xFF0 && entry <= 0xFF6){
+        //printf("Reserved Cluster\n");
+        return;
+    }
+    else if(entry == 0xFF7){
+        //printf("Bad Cluster\n");
+        return;
+    }
+    else if(entry >= 0xFF8 && entry <= 0xFFF){
+        //printf("Last Cluster in a file\n");
+        return;
+    }
+    else{
+        import_cluster_sequence(fp, destFp, entry, cluster, fileSize);
+    }
+}
+
+int read_ext_file(FILE* srcFp, unsigned char* cluster){
+    int size = 0;
+    memset(cluster, 0, CLUSTER_SIZE+1);
+    while(!feof(srcFp) && size < CLUSTER_SIZE){
+        fread(&(cluster[size++]), 1, 1, srcFp);
+        //printf("%X ", cluster[size-1]);
+    }
+    //printf("Read %d bytes\n", size);  
+    if(feof(srcFp))
+        return 1;
+    return 0;
+}
+
+void write_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
+    fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
+    fwrite(cluster, CLUSTER_SIZE, 1, fp);
+}
+
+void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char* sourceFilename){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE);
+    unsigned char* fullFilename = (unsigned char*)malloc(12);
+    int dirNum = 0, pos = 0;
+
+    FILE* srcFp = fopen(sourceFilename, "rb");
+    if(srcFp == NULL){
+        printf("Unable to open %s\n", sourceFilename);
+        return;
+    }
+
+    int firstFreeDirectoryNum = get_first_free_directory_entry(fp, dirSector);
+
+
+
+
+
+    int firstFreeFatPosition;
+    int end = 0;
+    while(!end){
+        end = read_ext_file(srcFp, cluster);
+        write_cluster(fp, get_entry(fp, get_first_free_fat_entry(fp)), cluster);
+    }
+
+    to_upper(filename);
+
+    while(1){
+        memset(cluster, 0, CLUSTER_SIZE);
+        memset(fullFilename, 0, 12);
+        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
+        if(filename_int == 0xE5){
+            dirNum++;
+            continue;
+        }
+        else if(filename_int == 0x00){
+            printf("%s nao encontrado\n", filename);
+            break;
+        }
+
+        int stop = remove_spaces(directory.filename);
+
+        strcpy(fullFilename, directory.filename);
+        read_attributes(directory.attributes, &attributes);
+
+        if(!(directory.extension[0] == ' ')){
+            fullFilename[stop++] = '.';
+            for(int i = 0; i < 3; i++){
+                fullFilename[stop+i] = directory.extension[i];
+            }
+            remove_spaces(fullFilename);
+        }
+
+        if(strcmp(filename, fullFilename)){
+            dirNum++;
+            continue;
+        }
+        
+        if(attributes.subdirectory){
+            printf("%s eh um diretorio\n", directory.filename);
+        }
+        else{
+            import_cluster_sequence(fp, srcFp, directory.firstLogicalCluster, cluster, directory.fileSize);
+            print_time(directory.lastWriteTime);
+            print_date(directory.lastWriteDate);    
+        }
+        free(fullFilename);
+        free(cluster);
+        fclose(srcFp);
         return;
     }
 }
@@ -701,7 +832,8 @@ int main(int argc, char* argv[]){
             change_directory(arqFat, &currentWorkingDirSector, argumento);
         }
         else if(!strcmp(comando, "free")){
-            if(get_first_free_directory_entry(arqFat, currentWorkingDirSector, &retorno))
+            retorno = get_first_free_directory_entry(arqFat, currentWorkingDirSector);
+            if(retorno != -1)
                 printf("Primeiro endereco livre: %d\n", retorno);
             else
                 printf("Nao ha espacos livres no diretorio atual\n");
@@ -725,6 +857,11 @@ int main(int argc, char* argv[]){
         else if(!strcmp(comando, "det")){
             scanf("%s", argumento);
             print_details(arqFat, currentWorkingDirSector, argumento);
+        }
+        else if(!strcmp(comando, "r")){
+            scanf("%s", argumento);
+            scanf("%s", argumento2);
+            import_file(arqFat, currentWorkingDirSector, argumento, argumento2);
         }
         else
             printf("Comando desconhecido\n");
