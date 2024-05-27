@@ -25,7 +25,7 @@ void print_date(short date){
     day = date&0b11111;
     month = (date&(0b1111<<5))>>5;
     year = (date&(0b1111111<<9))>>9;
-    printf("%02d/%02d/%d\n", day, month, year+1980);
+    printf("%02d/%02d/%d", day, month, year+1980);
 }
 
 void print_time(short time){
@@ -33,5 +33,5 @@ void print_time(short time){
     seconds = (time&0b11111)*2;
     minutes = (time&(0b111111<<5))>>5;
     hours = (time&(0b11111<<11))>>11;
-    printf("%02d:%02d:%02d\n", hours, minutes, seconds);
+    printf("%02d:%02d:%02d", hours, minutes, seconds);
 }
