@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "fat12.h"
 #include "utils.h"
@@ -92,7 +93,7 @@ void print_cluster_sequence(FILE* fp, int firstLogicalCluster, unsigned char* cl
     printf("%s", cluster);
     memset(cluster, 0, CLUSTER_SIZE+1);
 
-    if(entry == 0x00){
+    if(entry == 0x000){
         printf("Unused\n");
         return;
     }
@@ -339,8 +340,10 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
         }
         else{
             print_cluster_sequence(fp, directory.firstLogicalCluster, cluster);
-            print_time(directory.lastWriteTime);
-            print_date(directory.lastWriteDate);    
+            print_time(directory.creationTime);
+            printf(" ");
+            print_date(directory.creationDate);
+            printf("\n");
         }
         
         return;
@@ -417,7 +420,7 @@ int get_first_free_fat_entry(FILE* fp){
     int entry;
     for(int i = 0; i < CLUSTER_SIZE; i++){
         entry = get_entry(fp, i);
-        if(entry == 0x00)
+        if(entry == 0x000)
             return i;
     }
     return -1;
@@ -432,19 +435,21 @@ void print_fat_table(FILE* fp){
     printf("\n");
 }
 
-void remove_entry(FILE* fp, int position){
-    printf("Removing entry: %d (%X)\n", position, get_entry(fp, position));
+void write_entry(FILE* fp, int position, short entry){
+    printf("Writing entry: %d (%X)\n", position, entry);
     unsigned char full, half, buffer;
     if(position%2 == 0){
         fseek(fp, CLUSTER_SIZE*1 + (3*position)/2+1, SEEK_SET);
         fread(&half, 1, 1, fp);
         buffer = half&0b11110000;
+        buffer |= (entry&0b111100000000) >> 8;
         fseek(fp, CLUSTER_SIZE*1 + (3*position)/2+1, SEEK_SET);
         fwrite(&buffer, 1, 1, fp);
 
         fseek(fp, CLUSTER_SIZE*1 + (3*position)/2, SEEK_SET);
         fread(&full, 1, 1, fp);
         buffer = full&0b00000000;
+        buffer |= (entry&0b000011111111);
         fseek(fp, CLUSTER_SIZE*1 + (3*position)/2, SEEK_SET);
         fwrite(&buffer, 1, 1, fp);
     }
@@ -452,12 +457,14 @@ void remove_entry(FILE* fp, int position){
         fseek(fp, CLUSTER_SIZE*1 + (3*position)/2, SEEK_SET);
         fread(&half, 1, 1, fp);
         buffer = half&0b00001111;
+        buffer |= (entry&0b000000001111) << 4;
         fseek(fp, CLUSTER_SIZE*1 + (3*position)/2, SEEK_SET);
         fwrite(&buffer, 1, 1, fp);
 
         fseek(fp, CLUSTER_SIZE*1 + (3*position)/2+1, SEEK_SET);
         fread(&full, 1, 1, fp);
         buffer = full&0b00000000;
+        buffer |= (entry&0b111111110000) >> 4;
         fseek(fp, CLUSTER_SIZE*1 + (3*position)/2+1, SEEK_SET);
         fwrite(&buffer, 1, 1, fp);
     }
@@ -489,13 +496,13 @@ void remove_cluster_sequence(FILE* fp, int firstLogicalCluster){
     }
     else if(entry >= 0xFF8 && entry <= 0xFFF){
         //printf("Last Cluster in a file\n");
-        remove_entry(fp, logicalCluster);
+        write_entry(fp, logicalCluster, 0x000);
         return;
     }
     else{
         remove_cluster_sequence(fp, entry);
     }
-    remove_entry(fp, logicalCluster);
+    write_entry(fp, logicalCluster, 0x000);
 }
 
 void remove_file(FILE* fp, int dirSector, unsigned char* filename){
@@ -683,15 +690,28 @@ void import_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, un
     }
 }
 
-int read_ext_file(FILE* srcFp, unsigned char* cluster){
-    int size = 0;
+// int read_ext_file(FILE* srcFp, unsigned char* cluster){
+//     int size = 0;
+//     memset(cluster, 0, CLUSTER_SIZE+1);
+//     while(!feof(srcFp) && size < CLUSTER_SIZE){
+//         fread(&(cluster[size++]), 1, 1, srcFp);
+//         // printf("%X ", cluster[size-1]);
+//     }
+//     printf("Read %d bytes\n", size);  
+//     if(feof(srcFp))
+//         return 1;
+//     return 0;
+// }
+
+int read_ext_file(FILE* srcFp, unsigned char* cluster, int* remainingFileSize){
+    int size = 0, a;
     memset(cluster, 0, CLUSTER_SIZE+1);
-    while(!feof(srcFp) && size < CLUSTER_SIZE){
+    while(size < CLUSTER_SIZE && ((*remainingFileSize)-->0)){
         fread(&(cluster[size++]), 1, 1, srcFp);
-        //printf("%X ", cluster[size-1]);
+        // printf("%X ", cluster[size-1]);
     }
-    //printf("Read %d bytes\n", size);  
-    if(feof(srcFp))
+    printf("Read %d bytes\n", size);  
+    if(*remainingFileSize<=0)
         return 1;
     return 0;
 }
@@ -762,6 +782,8 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
     for(int i = 0; i < 8 - tamanhoFilename; i++){
         directory.filename[i+tamanhoFilename] = ' ';
     }
+    to_upper(directory.filename);
+
     size_t tamanhoExtensao = strlen(extension);
     if(tamanhoExtensao > 3){
         printf("Extensao (%s) deve ter ate 3 caracteres\n", extension);
@@ -771,74 +793,54 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
     for(int i = 0; i < 3 - tamanhoExtensao; i++){
         directory.extension[i+tamanhoExtensao] = ' ';
     }
+    to_upper(directory.extension);
 
     int firstFreeDirectoryNum = get_first_free_directory_entry(fp, dirSector);
+    int firstFreeFatPosition = get_first_free_fat_entry(fp);
+    directory.firstLogicalCluster = firstFreeFatPosition;
+    directory.fileSize = extFilesize;
 
+    time_t t = time(NULL);
+    struct tm tm = *localtime(&t);
+
+    directory.lastWriteDate = directory.creationDate = create_date(tm.tm_mday, tm.tm_mon+1, tm.tm_year-80);
+    directory.lastWriteTime = directory.creationTime = create_time(tm.tm_sec, tm.tm_min, tm.tm_hour);
+
+    write_directory(fp, dirSector, firstFreeDirectoryNum, directory);
 
     int numberOfClustersFile = (extFilesize+CLUSTER_SIZE-1)/CLUSTER_SIZE;
-    while(1){
+    printf("Number of clusters: %d\n", numberOfClustersFile);
 
-        numberOfClustersFile--;
-        if(numberOfClustersFile == 0)
-            break;
-    }
+    // while(1){
+    //     numberOfClustersFile--;
+    //     if(numberOfClustersFile == 0)
+    //         break;
+    // }
 
+    // IMPORTANTE PERGUNTAR PARA O PROF:
+    // incluir \0 ao importar arquivos txt?
 
-
-    int firstFreeFatPosition;
     int end = 0;
+    int previousFreeFatPosition = firstFreeFatPosition;
+    fseek(srcFp, 0, SEEK_SET);
     while(!end){
-        end = read_ext_file(srcFp, cluster);
-        write_cluster(fp, get_entry(fp, get_first_free_fat_entry(fp)), cluster);
+        end = read_ext_file(srcFp, cluster, &extFilesize);
+        // printf("[");
+        // printf("%s", cluster);
+        // printf("]\n");
+        write_cluster(fp, firstFreeFatPosition, cluster);
+        write_entry(fp, firstFreeFatPosition, 0xFFF);
+        firstFreeFatPosition = get_first_free_fat_entry(fp);
+        if(!end){
+            write_entry(fp, previousFreeFatPosition, firstFreeFatPosition);
+        }
+        previousFreeFatPosition = firstFreeFatPosition;
     }
 
-    to_upper(filename);
+    free(fullFilename);
+    free(cluster);
+    fclose(srcFp);
     return;
-
-    while(1){
-        memset(cluster, 0, CLUSTER_SIZE);
-        memset(fullFilename, 0, 12);
-        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
-        if(filename_int == 0xE5){
-            dirNum++;
-            continue;
-        }
-        else if(filename_int == 0x00){
-            printf("%s nao encontrado\n", filename);
-            break;
-        }
-
-        int stop = remove_spaces(directory.filename);
-
-        strcpy(fullFilename, directory.filename);
-        read_attributes(directory.attributes, &attributes);
-
-        if(!(directory.extension[0] == ' ')){
-            fullFilename[stop++] = '.';
-            for(int i = 0; i < 3; i++){
-                fullFilename[stop+i] = directory.extension[i];
-            }
-            remove_spaces(fullFilename);
-        }
-
-        if(strcmp(filename, fullFilename)){
-            dirNum++;
-            continue;
-        }
-        
-        if(attributes.subdirectory){
-            printf("%s eh um diretorio\n", directory.filename);
-        }
-        else{
-            import_cluster_sequence(fp, srcFp, directory.firstLogicalCluster, cluster, directory.fileSize);
-            print_time(directory.lastWriteTime);
-            print_date(directory.lastWriteDate);    
-        }
-        free(fullFilename);
-        free(cluster);
-        fclose(srcFp);
-        return;
-    }
 }
 
 void print_details(FILE* fp, int dirSector, unsigned char* filename){

@@ -35,3 +35,19 @@ void print_time(short time){
     hours = (time&(0b11111<<11))>>11;
     printf("%02d:%02d:%02d", hours, minutes, seconds);
 }
+
+short create_date(unsigned char day, unsigned char month, unsigned char year){
+    short date = 0;
+    date = (date&(~0b11111))|(day&(0b11111));
+    date = (date&(~(0b1111<<5)))|((month&0b1111)<<5);
+    date = (date&(~(0b1111111<<9)))|((year&0b1111111)<<9);
+    return date;
+}
+
+short create_time(unsigned char seconds, unsigned char minutes, unsigned char hours){
+    short time = 0;
+    time = (time&(~0b11111))|((seconds&(0b11111))/2);
+    time = (time&(~(0b111111<<5)))|((minutes&0b111111)<<5);
+    time = (time&(~(0b11111<<11)))|((hours&0b11111)<<11);
+    return time;
+}
