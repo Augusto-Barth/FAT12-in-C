@@ -600,7 +600,7 @@ void export_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
 
     FILE* destFp = fopen(destinationFilename, "wb");
     if(destFp == NULL){
-        printf("Unable to open %s\n", destinationFilename);
+        printf("Nao foi possivel abrir %s\n", destinationFilename);
         return;
     }
 
@@ -696,12 +696,45 @@ int read_ext_file(FILE* srcFp, unsigned char* cluster){
     return 0;
 }
 
+int get_ext_file_size(FILE* srcFp){
+    int size = 0;
+    unsigned char buffer;
+    while(fread(&buffer, 1, 1, srcFp) == 1)
+        size++;
+    return size;
+}
+
+int get_free_clusters(FILE* fp){
+    int freeClusters = 0, i = 0;
+    while(i < CLUSTER_SIZE){
+        if(get_entry(fp, i++) == 0x00)
+            freeClusters++;
+    }
+    return freeClusters;
+}
+
 void write_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
     fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
     fwrite(cluster, CLUSTER_SIZE, 1, fp);
 }
 
-void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char* sourceFilename){
+void write_directory(FILE* fp, int dirSector, int dirNum, fat12_dir directory){
+    fseek(fp, CLUSTER_SIZE*dirSector + 32*dirNum, SEEK_SET);
+    fwrite(&directory.filename, 8, 1 , fp);
+    fwrite(&directory.extension, 3, 1, fp);
+    fwrite(&directory.attributes, 1, 1, fp);
+    fwrite(&directory.reserved, 2, 1, fp);
+    fwrite(&directory.creationTime, 2, 1, fp);
+    fwrite(&directory.creationDate, 2, 1, fp);
+    fwrite(&directory.lastAccessDate, 2, 1, fp);
+    fwrite(&directory.ignore, 2, 1, fp);
+    fwrite(&directory.lastWriteTime, 2, 1, fp);
+    fwrite(&directory.lastWriteDate, 2, 1, fp);
+    fwrite(&directory.firstLogicalCluster, 2, 1, fp);
+    fwrite(&directory.fileSize, 4, 1, fp);
+}
+
+void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char* extension, unsigned char* sourceFilename){
     fat12_dir directory;
     fat12_dir_attr attributes;
     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE);
@@ -710,13 +743,45 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
 
     FILE* srcFp = fopen(sourceFilename, "rb");
     if(srcFp == NULL){
-        printf("Unable to open %s\n", sourceFilename);
+        printf("Nao foi possivel abrir %s\n", sourceFilename);
         return;
+    }
+
+    int extFilesize = get_ext_file_size(srcFp);
+    int freeSpace = get_free_clusters(fp)*CLUSTER_SIZE;
+    if(extFilesize > freeSpace){
+        printf("Nao ha espaco suficiente na imagem\n");
+        return;
+    }
+    size_t tamanhoFilename = strlen(filename);
+    if(tamanhoFilename > 8){
+        printf("Nome (%s) deve ter ate 8 caracteres (%ld)\n", filename, tamanhoFilename);
+        return;
+    }
+    strncpy(directory.filename, filename, 8);
+    for(int i = 0; i < 8 - tamanhoFilename; i++){
+        directory.filename[i+tamanhoFilename] = ' ';
+    }
+    size_t tamanhoExtensao = strlen(extension);
+    if(tamanhoExtensao > 3){
+        printf("Extensao (%s) deve ter ate 3 caracteres\n", extension);
+        return;
+    }
+    strncpy(directory.extension, extension, 3);
+    for(int i = 0; i < 3 - tamanhoExtensao; i++){
+        directory.extension[i+tamanhoExtensao] = ' ';
     }
 
     int firstFreeDirectoryNum = get_first_free_directory_entry(fp, dirSector);
 
 
+    int numberOfClustersFile = (extFilesize+CLUSTER_SIZE-1)/CLUSTER_SIZE;
+    while(1){
+
+        numberOfClustersFile--;
+        if(numberOfClustersFile == 0)
+            break;
+    }
 
 
 
@@ -728,6 +793,7 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
     }
 
     to_upper(filename);
+    return;
 
     while(1){
         memset(cluster, 0, CLUSTER_SIZE);
@@ -838,14 +904,14 @@ void print_details(FILE* fp, int dirSector, unsigned char* filename){
 int main(int argc, char* argv[]){
 
     if(argc != 2){
-        printf("Usage: %s path-to-fat12.img\n", argv[0]);
+        printf("Uso: %s path-to-fat12.img\n", argv[0]);
         exit(1);
     }
 
     FILE *arqFat = fopen(argv[1], "rb+");
 
     if(arqFat == NULL){
-        printf("Unable to open %s\n", argv[1]);
+        printf("Nao foi possivel abrir %s\n", argv[1]);
         exit(1);
     }
 
@@ -882,11 +948,13 @@ int main(int argc, char* argv[]){
     unsigned char comando[32] = {0};
     unsigned char argumento[32] = {0};
     unsigned char argumento2[32] = {0};
+    unsigned char argumento3[32] = {0};
     int retorno = 0;
     while(1){
         memset(comando, 0, 32);
         memset(argumento, 0, 32);
         memset(argumento2, 0, 32);
+        memset(argumento3, 0, 32);
         printf(">");
         scanf("%s", comando);
         if(!strcmp(comando, "cat")){
@@ -916,6 +984,7 @@ int main(int argc, char* argv[]){
         }
         else if(!strcmp(comando, "fat")){
             print_fat_table(arqFat);
+            printf("Free: %d\n", get_free_clusters(arqFat));
         }
         else if(!strcmp(comando, "exp")){
             scanf("%s", argumento);
@@ -930,10 +999,12 @@ int main(int argc, char* argv[]){
             scanf("%s", argumento);
             print_details(arqFat, currentWorkingDirSector, argumento);
         }
-        else if(!strcmp(comando, "r")){
+        else if(!strcmp(comando, "imp")){
+            // scanf("%s.%s", argumento, argumento2);
             scanf("%s", argumento);
             scanf("%s", argumento2);
-            import_file(arqFat, currentWorkingDirSector, argumento, argumento2);
+            scanf("%s", argumento3);
+            import_file(arqFat, currentWorkingDirSector, argumento, argumento2, argumento3);
         }
         else
             printf("Comando desconhecido\n");
