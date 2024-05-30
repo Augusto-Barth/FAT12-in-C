@@ -340,10 +340,10 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
         }
         else{
             print_cluster_sequence(fp, directory.firstLogicalCluster, cluster);
-            print_time(directory.creationTime);
-            printf(" ");
-            print_date(directory.creationDate);
-            printf("\n");
+            // print_time(directory.creationTime);
+            // printf(" ");
+            // print_date(directory.creationDate);
+            // printf("\n");
         }
         
         return;
@@ -754,11 +754,12 @@ void write_directory(FILE* fp, int dirSector, int dirNum, fat12_dir directory){
     fwrite(&directory.fileSize, 4, 1, fp);
 }
 
-void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char* extension, unsigned char* sourceFilename){
+void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilename){
     fat12_dir directory;
-    fat12_dir_attr attributes;
+    memset(&directory, 0, sizeof(fat12_dir));
     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE);
-    unsigned char* fullFilename = (unsigned char*)malloc(12);
+    char* filename = (char*)malloc(32);
+    char* extension = (char*)malloc(32);
     int dirNum = 0, pos = 0;
 
     FILE* srcFp = fopen(sourceFilename, "rb");
@@ -773,6 +774,10 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
         printf("Nao ha espaco suficiente na imagem\n");
         return;
     }
+
+    strcpy(filename, strtok(fullFilename, "."));
+    strcpy(extension, strtok(NULL, "."));
+
     size_t tamanhoFilename = strlen(filename);
     if(tamanhoFilename > 8){
         printf("Nome (%s) deve ter ate 8 caracteres (%ld)\n", filename, tamanhoFilename);
@@ -837,7 +842,8 @@ void import_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
         previousFreeFatPosition = firstFreeFatPosition;
     }
 
-    free(fullFilename);
+    free(filename);
+    free(extension);
     free(cluster);
     fclose(srcFp);
     return;
@@ -947,16 +953,14 @@ int main(int argc, char* argv[]){
 
     int currentWorkingDirSector = ROOT_DIR_SECTOR; // Mudar com cd
 
-    unsigned char comando[32] = {0};
-    unsigned char argumento[32] = {0};
-    unsigned char argumento2[32] = {0};
-    unsigned char argumento3[32] = {0};
+    char comando[32] = {0};
+    char argumento[32] = {0};
+    char argumento2[32] = {0};
     int retorno = 0;
     while(1){
         memset(comando, 0, 32);
         memset(argumento, 0, 32);
         memset(argumento2, 0, 32);
-        memset(argumento3, 0, 32);
         printf(">");
         scanf("%s", comando);
         if(!strcmp(comando, "cat")){
@@ -1005,8 +1009,7 @@ int main(int argc, char* argv[]){
             // scanf("%s.%s", argumento, argumento2);
             scanf("%s", argumento);
             scanf("%s", argumento2);
-            scanf("%s", argumento3);
-            import_file(arqFat, currentWorkingDirSector, argumento, argumento2, argumento3);
+            import_file(arqFat, currentWorkingDirSector, argumento, argumento2);
         }
         else
             printf("Comando desconhecido\n");
