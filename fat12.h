@@ -1,6 +1,12 @@
 #ifndef FAT12
 #define FAT12
 
+#define MIN(x, y) x < y ? x : y
+
+#define CLUSTER_SIZE 512
+#define ROOT_DIR_SECTOR 19
+#define MOUNT_POINT "/"
+
 typedef struct fat12_bootsector
 {
     unsigned char ignorar[3];

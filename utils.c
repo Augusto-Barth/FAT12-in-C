@@ -1,6 +1,3 @@
-#include <stdio.h>
-#include <ctype.h>
-
 #include "utils.h"
 
 #if USE_COLORS == 1
