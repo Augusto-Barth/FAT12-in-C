@@ -1,6 +1,15 @@
 #ifndef UTILS
 #define UTILS
 
+#ifndef USE_COLORS
+#define USE_COLORS 1
+#endif
+
+void red();
+void blue();
+void green();
+void reset();
+
 int remove_spaces(char* string);
 void to_upper(char* string);
 void print_date(short date);

@@ -1,6 +1,21 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#include "utils.h"
+
+#if USE_COLORS == 1
+void red () { printf("\033[1;31m"); }
+void blue() { printf("\033[0;34m"); }
+void green() { printf("\033[0;32m"); }
+void reset () { printf("\033[0m"); }
+#else
+void red () { printf(""); }
+void blue() { printf(""); }
+void green() { printf(""); }
+void reset () { printf(""); }
+#endif
+
+
 int remove_spaces(char* string){
     int i = 0;
     while(string[i] != ' ' && string[i] != 0){
