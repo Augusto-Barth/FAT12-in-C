@@ -1,6 +1,7 @@
 #ifndef UTILS
 #define UTILS
 #include <stdio.h>
+#include <ctype.h>
 
 #ifndef USE_COLORS
 #define USE_COLORS 1

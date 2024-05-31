@@ -54,6 +54,7 @@ void read_attributes(unsigned char attributes_byte, fat12_dir_attr* attributes){
 
 void read_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
     //limpar com memset?
+    memset(cluster, 0, CLUSTER_SIZE);
     fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
     fread(cluster, CLUSTER_SIZE, 1, fp);
 }
@@ -63,7 +64,6 @@ void print_cluster_sequence(FILE* fp, int firstLogicalCluster, unsigned char* cl
     int entry = get_entry(fp, logicalCluster);
     read_cluster(fp, logicalCluster, cluster);
     printf("%s", cluster);
-    memset(cluster, 0, CLUSTER_SIZE+1);
 
     if(entry == 0x000){
         printf("Unused\n");
@@ -426,7 +426,6 @@ void export_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, un
     fwrite(cluster, MIN(fileSize, CLUSTER_SIZE), 1, destFp);
     fileSize -= CLUSTER_SIZE;
     // fprintf(destFp, "%s", cluster);
-    memset(cluster, 0, CLUSTER_SIZE);
 
     if(entry == 0x00){
         //printf("Unused\n");
@@ -500,8 +499,8 @@ void export_file(FILE* fp, int dirSector, unsigned char* filename, unsigned char
         }
         else{
             export_cluster_sequence(fp, destFp, directory.firstLogicalCluster, cluster, directory.fileSize);
-            print_time(directory.lastWriteTime);
-            print_date(directory.lastWriteDate);    
+            // print_time(directory.lastWriteTime);
+            // print_date(directory.lastWriteDate);    
         }
         free(fullFilename);
         free(cluster);
@@ -518,7 +517,6 @@ void import_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, un
     fwrite(cluster, MIN(fileSize, CLUSTER_SIZE), 1, destFp);
     fileSize -= CLUSTER_SIZE;
     // fprintf(destFp, "%s", cluster);
-    memset(cluster, 0, CLUSTER_SIZE);
 
     if(entry == 0x00){
         //printf("Unused\n");
