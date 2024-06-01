@@ -260,8 +260,6 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
 void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
     fat12_dir directory;
     fat12_dir_attr attributes;
-    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
-    memset(cluster, 0, CLUSTER_SIZE+1);
     unsigned char* fullFilename = (unsigned char*)malloc(12);
     int dirNum = 0, pos = 0;
 
@@ -303,7 +301,6 @@ void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
         
         break;
     }
-    free(cluster);
     free(fullFilename);
     return;
 }
@@ -869,7 +866,9 @@ int main(int argc, char* argv[]){
             import_file(arqFat, currentWorkingDirSector, argumento, argumento2);
         }
         else if(!strcmp(comando, "format")){
+            red();
             printf("TEM CERTEZA QUE QUER FORMATAR A IMAGEM?(S/n)\n");
+            reset();
             scanf("%s", argumento);
             to_upper(argumento);
             if(!strcmp(argumento, "S"))
