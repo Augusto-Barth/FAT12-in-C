@@ -53,7 +53,6 @@ void read_attributes(unsigned char attributes_byte, fat12_dir_attr* attributes){
 }
 
 void read_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
-    //limpar com memset?
     memset(cluster, 0, CLUSTER_SIZE);
     fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
     fread(cluster, CLUSTER_SIZE, 1, fp);
@@ -207,13 +206,13 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
     fat12_dir directory;
     fat12_dir_attr attributes;
     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+    memset(cluster, 0, CLUSTER_SIZE+1);
     unsigned char* fullFilename = (unsigned char*)malloc(12);
     int dirNum = 0, pos = 0;
 
     to_upper(filename);
 
     while(1){
-        memset(cluster, 0, CLUSTER_SIZE+1);
         memset(fullFilename, 0, 12);
         int filename_int = read_directory(fp, dirSector, dirNum, &directory);
         if(filename_int == 0xE5){
@@ -262,13 +261,13 @@ void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
     fat12_dir directory;
     fat12_dir_attr attributes;
     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+    memset(cluster, 0, CLUSTER_SIZE+1);
     unsigned char* fullFilename = (unsigned char*)malloc(12);
     int dirNum = 0, pos = 0;
 
     to_upper(directoryName);
 
     while(1){
-        memset(cluster, 0, CLUSTER_SIZE+1);
         memset(fullFilename, 0, 12);
         int filename_int = read_directory(fp, *dirSector, dirNum, &directory);
         if(filename_int == 0xE5){
@@ -326,16 +325,15 @@ int get_first_free_directory_entry(FILE* fp, int dirSector){
 }
 
 void remove_cluster(FILE* fp, int logicalCluster){
-    unsigned char buffer[512] = {0};
+    unsigned char buffer[CLUSTER_SIZE] = {0};
     fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
-    fwrite(&buffer, 512, 1, fp);
+    fwrite(&buffer, CLUSTER_SIZE, 1, fp);
 }
-
 
 void remove_cluster_sequence(FILE* fp, int firstLogicalCluster){
     int logicalCluster = firstLogicalCluster;
     int entry = get_entry(fp, logicalCluster);
-    remove_cluster(fp, logicalCluster);
+    //remove_cluster(fp, logicalCluster);
 
     if(entry == 0x00){
         return;
@@ -554,12 +552,12 @@ void import_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, un
 
 int read_ext_file(FILE* srcFp, unsigned char* cluster, int* remainingFileSize){
     int size = 0, a;
-    memset(cluster, 0, CLUSTER_SIZE+1);
+    memset(cluster, 0, CLUSTER_SIZE);
     while(size < CLUSTER_SIZE && ((*remainingFileSize)-->0)){
         fread(&(cluster[size++]), 1, 1, srcFp);
         // printf("%X ", cluster[size-1]);
     }
-    printf("Read %d bytes\n", size);  
+    //printf("Read %d bytes\n", size);  
     if(*remainingFileSize<=0)
         return 1;
     return 0;
@@ -663,7 +661,7 @@ void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilena
     write_directory(fp, dirSector, firstFreeDirectoryNum, directory);
 
     int numberOfClustersFile = (extFilesize+CLUSTER_SIZE-1)/CLUSTER_SIZE;
-    printf("Number of clusters: %d\n", numberOfClustersFile);
+    //printf("Number of clusters: %d\n", numberOfClustersFile);
 
     // while(1){
     //     numberOfClustersFile--;
@@ -755,6 +753,16 @@ void print_details(FILE* fp, int dirSector, unsigned char* filename){
         free(cluster);
         free(fullFilename);
         return;
+    }
+}
+
+void format_image(FILE* fp){
+    for(int i = 0; i < 512; i++)
+        write_entry(fp, i, 0x000);
+    unsigned char buffer[32] = {0};
+    fseek(fp, ROOT_DIR_SECTOR*CLUSTER_SIZE, SEEK_SET);
+    for(int i = 0; i < bootsector.tamanhoRoot; i++){
+        fwrite(buffer, 32, 1, fp);
     }
 }
 
@@ -859,6 +867,13 @@ int main(int argc, char* argv[]){
             scanf("%s", argumento);
             scanf("%s", argumento2);
             import_file(arqFat, currentWorkingDirSector, argumento, argumento2);
+        }
+        else if(!strcmp(comando, "format")){
+            printf("TEM CERTEZA QUE QUER FORMATAR A IMAGEM?(S/n)\n");
+            scanf("%s", argumento);
+            to_upper(argumento);
+            if(!strcmp(argumento, "S"))
+                format_image(arqFat);
         }
         else
             printf("Comando desconhecido\n");
