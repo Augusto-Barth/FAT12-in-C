@@ -9,6 +9,9 @@
 
 fat12_bs bootsector;
 
+// TODO fazer mkdir(?) e quando importar arquivos para um subdiretorio,
+// expandir ele para outro cluster se necessario (a menos que seja o root dir)
+
 void read_bootsector(FILE* fp, fat12_bs* bootsector){
     fread(&bootsector->ignorar, 3, 1, fp); 
     fread(&bootsector->oem, 8, 1, fp); 
@@ -351,6 +354,7 @@ void remove_cluster_sequence(FILE* fp, int firstLogicalCluster){
     write_entry(fp, logicalCluster, 0x000);
 }
 
+// TODO remover diretorios, lembrar que eles sao como arquivos, verificar FAT Table
 void remove_file(FILE* fp, int dirSector, unsigned char* filename){
     fat12_dir directory;
     fat12_dir_attr attributes;
