@@ -6,10 +6,10 @@ void blue() { printf("\033[0;34m"); }
 void green() { printf("\033[0;32m"); }
 void reset () { printf("\033[0m"); }
 #else
-void red () { printf(""); }
-void blue() { printf(""); }
-void green() { printf(""); }
-void reset () { printf(""); }
+void red () { }
+void blue() { printf("* "); }
+void green() { }
+void reset () { }
 #endif
 
 
