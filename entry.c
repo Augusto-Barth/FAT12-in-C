@@ -28,7 +28,7 @@ short get_entry(FILE* fp, int position){
 }
 
 void write_entry(FILE* fp, int position, short entry){
-    //printf("Writing entry: %d (%X)\n", position, entry);
+    printf("Writing entry: %X(%d) at %d\n", entry, entry, position);
     unsigned char full, half, buffer;
     for(int curTable = 0; curTable < 2; curTable++){
         if(position%2 == 0){
@@ -75,10 +75,19 @@ int get_first_free_fat_entry(FILE* fp){
 }
 
 void print_fat_table(FILE* fp){
-    for(int i = 0; i < CLUSTER_SIZE; i++){
+    for(int i = 0; i < 3072; i++){
         if(i % 8 == 0 && i != 0)
             printf("\n");
         printf("%03X ", get_entry(fp, i));
     }
     printf("\n");
+}
+
+int get_free_clusters(FILE* fp){
+    int freeClusters = 0;
+    for(int i = 0; i < 3072; i++){
+        if(get_entry(fp, i) == 0x000)
+            freeClusters++;
+    }
+    return freeClusters;
 }

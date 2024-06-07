@@ -56,6 +56,7 @@ void remove_cluster(FILE* fp, int logicalCluster){
 }
 
 void write_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
+    printf("Writing cluster at logicalCluster %d or physical %x(%d)\n", logicalCluster, (33+logicalCluster-2)*CLUSTER_SIZE, (33+logicalCluster-2)*CLUSTER_SIZE);
     fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
     fwrite(cluster, CLUSTER_SIZE, 1, fp);
 }
@@ -79,15 +80,6 @@ int get_ext_file_size(FILE* srcFp){
     while(fread(&buffer, 1, 1, srcFp) == 1)
         size++;
     return size;
-}
-
-int get_free_clusters(FILE* fp){
-    int freeClusters = 0, i = 0;
-    while(i < CLUSTER_SIZE){
-        if(get_entry(fp, i++) == 0x00)
-            freeClusters++;
-    }
-    return freeClusters;
 }
 
 void write_directory(FILE* fp, int dirSector, int dirNum, fat12_dir directory){

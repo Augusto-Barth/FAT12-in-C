@@ -9,9 +9,13 @@
 #include "fileio.h"
 
 fat12_bs bootsector;
+typedef int logicalEntry;
+typedef int physicalSector;
 
 // TODO fazer mkdir(?) e quando importar arquivos para um subdiretorio,
 // expandir ele para outro cluster se necessario (a menos que seja o root dir)
+
+// definir tipos de dados para entries fisicas e logicas (pra nao confundir)
 
 void print_cluster_sequence(FILE* fp, int firstLogicalCluster, unsigned char* cluster){
     int logicalCluster = firstLogicalCluster;
@@ -84,7 +88,7 @@ void print_directory_sequence_short(FILE* fp, int dirSector, int subLevel){
     }
 }
 
-void find_directory(FILE* fp, int dirSector, int targetSector){
+void print_directory_name(FILE* fp, int dirSector, int targetSector){
     fat12_dir directory;
     fat12_dir_attr attributes;
     int dirNum = 0;
@@ -117,7 +121,7 @@ void find_directory(FILE* fp, int dirSector, int targetSector){
                 return;
             }
             else{
-                find_directory(fp, directory.firstLogicalCluster+33-2, targetSector);
+                print_directory_name(fp, directory.firstLogicalCluster+33-2, targetSector);
             }
         }
         dirNum++;
@@ -127,33 +131,48 @@ void find_directory(FILE* fp, int dirSector, int targetSector){
 void print_directory_short(FILE* fp, int dirSector){
     fat12_dir directory;
     fat12_dir_attr attributes;
-    int dirNum = 0;
+    int dirNum = 0, entry = 0, dirNumLimit = (dirSector == ROOT_DIR_SECTOR) ? bootsector.tamanhoRoot : (CLUSTER_SIZE/32);
+    printf("limit %d\n", dirNumLimit);
+    print_directory_name(fp, ROOT_DIR_SECTOR, dirSector);
 
-    find_directory(fp, ROOT_DIR_SECTOR, dirSector);
+    while(1){
+        while(dirNum < dirNumLimit){
+            int filename_int = read_directory(fp, dirSector, dirNum, &directory);
+            
+            if(filename_int == 0xE5){
+                dirNum++;
+                continue;
+            }
+            else if(filename_int == 0x00)
+                break;
 
-    while(dirNum < CLUSTER_SIZE/32){
-        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
-        
-        if(filename_int == 0xE5){
+            printf("|-");
+
+            remove_spaces(directory.filename);
+            read_attributes(directory.attributes, &attributes);
+
+            if(attributes.subdirectory){
+                blue();
+                printf("%s\n", directory.filename);
+                reset();
+            }
+            else
+                printf("%s.%s\n", directory.filename, directory.extension);
             dirNum++;
-            continue;
         }
-        else if(filename_int == 0x00)
+        // ADICIONAR ESSA SECAO PARA PESQUISAR TODAS OS CLUSTERS DE
+        // UMA PASTA NAS OUTRAS FUNCOES (rm, cat, etc)
+        if(dirSector == ROOT_DIR_SECTOR)
             break;
 
-        printf("|-");
-
-        remove_spaces(directory.filename);
-        read_attributes(directory.attributes, &attributes);
-
-        if(attributes.subdirectory){
-            blue();
-            printf("%s\n", directory.filename);
-            reset();
-        }
-        else
-            printf("%s.%s\n", directory.filename, directory.extension);
-        dirNum++;
+        entry = get_entry(fp, dirSector-33+2);
+        // printf("Entry: %X(%d) sector : %d\n", entry, entry, dirSector);
+        // int a;
+        // scanf("%d", &a);
+        if(entry >= 0xFF8)
+            break;
+        dirNum = 0;
+        dirSector = entry+33-2;
     }
 }
 
@@ -495,6 +514,23 @@ void import_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, un
 //     return 0;
 // }
 
+int get_last_entry(FILE* fp, int dirSector){
+    int entry = 0x000;
+    if(dirSector == ROOT_DIR_SECTOR)
+        return dirSector;
+
+    int logicalDirSector = dirSector-33+2;
+    while(1){
+        entry = get_entry(fp, logicalDirSector);
+        printf("%d->%d\n", logicalDirSector, entry);
+        if(entry == 0xFFF)
+            break;
+        logicalDirSector = entry;
+    }
+    return (logicalDirSector+33-2);
+    
+}
+
 void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilename){
     fat12_dir directory;
     memset(&directory, 0, sizeof(fat12_dir));
@@ -512,11 +548,18 @@ void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilena
     // check_if_directory_full();
     int firstFreeDirectoryNum = get_first_free_directory_entry(fp, dirSector);
     int extFilesize = get_ext_file_size(srcFp);
-    int freeSpace;
+    int freeSpace = get_free_clusters(fp);
     
-    if(firstFreeDirectoryNum == -1)
+    // printf("freefat %d\n", get_free_clusters(fp));
+    if(firstFreeDirectoryNum == -1){
+        if(dirSector == ROOT_DIR_SECTOR){
+            printf("Erro! Sem espaço suficiente no diretorio atual\n");
+            return;
+        }
         freeSpace = (get_free_clusters(fp)-1)*CLUSTER_SIZE;
-
+        
+    }
+    // printf("filesize %d freespace %d\n", extFilesize, freeSpace);
     if(extFilesize > freeSpace){
         printf("Nao ha espaco suficiente na imagem\n");
         return;
@@ -547,24 +590,38 @@ void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilena
     }
     to_upper(directory.extension);
 
-    if(firstFreeDirectoryNum == -1){
-        if(dirSector == ROOT_DIR_SECTOR){
-            printf("Erro! Sem espaço suficiente no diretorio atual\n");
-            return;
-        }
-        
-    }
+
     int firstFreeFatPosition = get_first_free_fat_entry(fp);
+    dirSector = get_last_entry(fp, dirSector);
+    printf("Sector of last cluster %X(%d)\n", dirSector, dirSector);
+    firstFreeDirectoryNum = get_first_free_directory_entry(fp, dirSector);
+    if(firstFreeDirectoryNum == -1){
+        write_entry(fp, dirSector-33+2, firstFreeFatPosition);
+        write_entry(fp, firstFreeFatPosition, 0xFFF);
+        dirSector = firstFreeFatPosition+33-2;
+        remove_cluster(fp, firstFreeFatPosition);
+        firstFreeDirectoryNum = get_first_free_directory_entry(fp, dirSector);
+        firstFreeFatPosition = get_first_free_fat_entry(fp);
+    }
     directory.firstLogicalCluster = firstFreeFatPosition;
     directory.fileSize = extFilesize;
+    firstFreeDirectoryNum = get_first_free_directory_entry(fp, dirSector);
 
     time_t t = time(NULL);
     struct tm tm = *localtime(&t);
 
     directory.lastWriteDate = directory.creationDate = create_date(tm.tm_mday, tm.tm_mon+1, tm.tm_year-80);
     directory.lastWriteTime = directory.creationTime = create_time(tm.tm_sec, tm.tm_min, tm.tm_hour);
-
+    // printf("writing file header at sector %d num %d\n", dirSector, firstFreeDirectoryNum);
     write_directory(fp, dirSector, firstFreeDirectoryNum, directory);
+    //write_directory(fp, dirSector+33-2, firstFreeDirectoryNum, directory);
+
+
+    // NAO confiar nesse codigo, tava com sono quando escrevi
+    // firstFreeFatPosition = get_first_free_fat_entry(fp);
+    // directory.firstLogicalCluster = firstFreeFatPosition;
+    // write_directory(fp, dirSector, firstFreeDirectoryNum, directory);
+
 
     int numberOfClustersFile = (extFilesize+CLUSTER_SIZE-1)/CLUSTER_SIZE;
     //printf("Number of clusters: %d\n", numberOfClustersFile);

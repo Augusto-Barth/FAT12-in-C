@@ -17,8 +17,6 @@ void write_cluster(FILE *fp, int logicalCluster, unsigned char *cluster);
 int read_ext_file(FILE *srcFp, unsigned char *cluster, int *remainingFileSize);
 int get_ext_file_size(FILE *srcFp);
 
-int get_free_clusters(FILE *fp);
-
 void write_directory(FILE *fp, int dirSector, int dirNum, fat12_dir directory);
 
 #endif
