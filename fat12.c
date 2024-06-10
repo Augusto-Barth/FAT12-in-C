@@ -814,7 +814,7 @@ int main(int argc, char* argv[]){
             scanf("%s", argumento2);
             export_file(arqFat, currentWorkingDirSector, argumento, argumento2);
         }
-        else if(comando[0] == 'q'){
+        else if(!strcmp(comando, "q")){
             fclose(arqFat);
             break;
         }
