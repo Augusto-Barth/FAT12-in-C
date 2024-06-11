@@ -1,6 +1,7 @@
 #include "entry.h"
 
-int fatTableSector[2] = {FAT_TABLE1_SECTOR, FAT_TABLE2_SECTOR};
+// int fatTableSector[] = {FAT_TABLE1_SECTOR, FAT_TABLE2_SECTOR};
+int fatTableSector[] = {FAT_TABLE1_SECTOR};
 
 short get_entry(FILE* fp, int position){
     // Entrar com a posicao absoluta no arquivo e verificar se esta dentro de uma
@@ -28,7 +29,7 @@ short get_entry(FILE* fp, int position){
 }
 
 void write_entry(FILE* fp, int position, short entry){
-    printf("Writing entry: %X(%d) at %d\n", entry, entry, position);
+    // printf("Writing entry: %X(%d) at %d\n", entry, entry, position);
     unsigned char full, half, buffer;
     for(int curTable = 0; curTable < 2; curTable++){
         if(position%2 == 0){
@@ -72,6 +73,23 @@ int get_first_free_fat_entry(FILE* fp){
             return i;
     }
     return -1;
+}
+
+int get_last_entry(FILE* fp, int dirSector){
+    int entry = 0x000;
+    if(dirSector == ROOT_DIR_SECTOR)
+        return dirSector;
+
+    int logicalDirSector = dirSector-33+2;
+    while(1){
+        entry = get_entry(fp, logicalDirSector);
+        // printf("%d->%d\n", logicalDirSector, entry);
+        if(entry == 0xFFF)
+            break;
+        logicalDirSector = entry;
+    }
+    return (logicalDirSector+33-2);
+    
 }
 
 void print_fat_table(FILE* fp){
