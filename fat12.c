@@ -57,15 +57,6 @@ int get_free_root_dir(FILE* fp){
     return freeDirs;
 }
 
-int get_free_data_clusters(FILE* fp){
-    int freeClusters = 0;
-    for(int i = 33; i < bootsector.quantSetoresDisco; i++){
-        if(get_entry(fp, i) == 0x000)
-            freeClusters++;
-    }
-    return freeClusters;
-}
-
 void print_cluster_sequence(FILE* fp, int firstLogicalCluster, unsigned char* cluster){
     int logicalCluster = firstLogicalCluster;
     int entry = get_entry(fp, logicalCluster);
@@ -438,7 +429,7 @@ void export_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, un
     fwrite(cluster, MIN(fileSize, CLUSTER_SIZE), 1, destFp);
     fileSize -= CLUSTER_SIZE;
 
-    if(entry == 0x00){
+    if(entry == 0x000){
         //printf("Unused\n");
         return;
     }
@@ -793,7 +784,6 @@ int main(int argc, char* argv[]){
             print_details(arqFat, currentWorkingDirSector, argumento);
         }
         else if(!strcmp(comando, "imp")){
-            // scanf("%s.%s", argumento, argumento2);
             scanf("%s", argumento);
             scanf("%s", argumento2);
             import_file(arqFat, currentWorkingDirSector, argumento, argumento2);
