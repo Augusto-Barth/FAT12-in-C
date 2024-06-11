@@ -93,7 +93,7 @@ int get_last_entry(FILE* fp, int dirSector){
 }
 
 void print_fat_table(FILE* fp){
-    for(int i = 0; i < 3072; i++){
+    for(int i = 0; i < FAT_TABLE_SIZE; i++){
         if(i % 8 == 0 && i != 0)
             printf("\n");
         printf("%03X ", get_entry(fp, i));
@@ -103,7 +103,7 @@ void print_fat_table(FILE* fp){
 
 int get_free_clusters(FILE* fp){
     int freeClusters = 0;
-    for(int i = 0; i < 3072; i++){
+    for(int i = 0; i < FAT_TABLE_SIZE; i++){
         if(get_entry(fp, i) == 0x000)
             freeClusters++;
     }

@@ -7,6 +7,7 @@
 #define ROOT_DIR_SECTOR 19
 #define FAT_TABLE1_SECTOR 1
 #define FAT_TABLE2_SECTOR 10
+#define FAT_TABLE_SIZE (CLUSTER_SIZE*8*9)/12
 #define MOUNT_POINT "/"
 
 typedef struct fat12_bootsector
