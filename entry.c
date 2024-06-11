@@ -4,11 +4,6 @@
 int fatTableSector[] = {FAT_TABLE1_SECTOR};
 
 short get_entry(FILE* fp, int position){
-    // Entrar com a posicao absoluta no arquivo e verificar se esta dentro de uma
-    // tabela FAT (de preferencia a primeira) (NAO)
-    // Tambem fazer a verificacao se a entrada eh a mesma nas duas tabelas (nao sei
-    // se eh assim que funciona na FAT12)
-    // Talvez preservar a posicao do ponteiro de arquivo no fim da funcao (ftell e fseek) (NAO)
     int entry = 0;
     unsigned char full, half;
     if(position%2 == 0){
@@ -29,7 +24,6 @@ short get_entry(FILE* fp, int position){
 }
 
 void write_entry(FILE* fp, int position, short entry){
-    // printf("Writing entry: %X(%d) at %d\n", entry, entry, position);
     unsigned char full, half, buffer;
     for(int curTable = 0; curTable < 2; curTable++){
         if(position%2 == 0){
@@ -83,7 +77,6 @@ int get_last_entry(FILE* fp, int dirSector){
     int logicalDirSector = dirSector-33+2;
     while(1){
         entry = get_entry(fp, logicalDirSector);
-        // printf("%d->%d\n", logicalDirSector, entry);
         if(entry == 0xFFF)
             break;
         logicalDirSector = entry;

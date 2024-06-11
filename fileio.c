@@ -66,9 +66,7 @@ int read_ext_file(FILE* srcFp, unsigned char* cluster, int* remainingFileSize){
     memset(cluster, 0, CLUSTER_SIZE);
     while(size < CLUSTER_SIZE && ((*remainingFileSize)-->0)){
         fread(&(cluster[size++]), 1, 1, srcFp);
-        // printf("%X ", cluster[size-1]);
     }
-    //printf("Read %d bytes\n", size);  
     if(*remainingFileSize<=0)
         return 1;
     return 0;

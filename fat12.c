@@ -10,11 +10,6 @@
 
 fat12_bs bootsector;
 
-// TODO fazer mkdir(?) e quando importar arquivos para um subdiretorio,
-// expandir ele para outro cluster se necessario (a menos que seja o root dir)
-
-// definir tipos de dados para entries fisicas e logicas (pra nao confundir)
-
 int get_full_filename(fat12_dir directory, char* fullFilename){
     memset(fullFilename, 0, 12);
 
@@ -90,7 +85,6 @@ void print_cluster_sequence(FILE* fp, int firstLogicalCluster, unsigned char* cl
         return;
     }
     else if(entry >= 0xFF8 && entry <= 0xFFF){
-        //printf("Last Cluster in a file\n");
         printf("\n");
         return;
     }
@@ -234,8 +228,6 @@ void print_directory_short(FILE* fp, int dirSector){
                 printf("%s.%s\n", directory.filename, directory.extension);
             dirNum++;
         }
-        // ADICIONAR ESSA SECAO PARA PESQUISAR TODAS OS CLUSTERS DE
-        // UMA PASTA NAS OUTRAS FUNCOES (rm, cat, etc)
         if(dirSector == ROOT_DIR_SECTOR)
             break;
 
@@ -402,7 +394,6 @@ void remove_file(FILE* fp, int dirSector, char* filename){
             get_full_filename(directory, fullFilename);
             read_attributes(directory.attributes, &attributes);
             
-            // TODO separar tudo aqui em cima em uma funcao find_file que retorna diretorio, fullFilename e tal
             if(strcmp(filename, fullFilename)){
                 dirNum++;
                 continue;
@@ -416,14 +407,12 @@ void remove_file(FILE* fp, int dirSector, char* filename){
                 fseek(fp, CLUSTER_SIZE*dirSector + 32*dirNum, SEEK_SET);
                 fwrite(&buffer, 32, 1, fp);
                 int filename_int_next = read_directory(fp, dirSector, dirNum+1, &directory_next);
-                //printf("NEXT: %X\n", filename_int_next);
+
                 if(filename_int_next != 0x00){
                     short bufferInt = 0xE5;
                     fseek(fp, CLUSTER_SIZE*dirSector + 32*dirNum, SEEK_SET);
-                    //printf("At: %X\n", CLUSTER_SIZE*dirSector + 32*dirNum);
                     fwrite(&bufferInt, sizeof(bufferInt), 1, fp);
                 }
-                
             }
             break;
         }
@@ -510,9 +499,7 @@ void export_file(FILE* fp, int dirSector, char* filename, char* destinationFilen
                 printf("%s eh um diretorio\n", fullFilename);
             }
             else{
-                export_cluster_sequence(fp, destFp, directory.firstLogicalCluster, cluster, directory.fileSize);
-                // print_time(directory.lastWriteTime);
-                // print_date(directory.lastWriteDate);    
+                export_cluster_sequence(fp, destFp, directory.firstLogicalCluster, cluster, directory.fileSize); 
             }
             break;
         }
@@ -534,11 +521,11 @@ void export_file(FILE* fp, int dirSector, char* filename, char* destinationFilen
 void import_cluster_sequence(FILE* fp, FILE* destFp, int firstLogicalCluster, unsigned char* cluster, int fileSize){
     int logicalCluster = firstLogicalCluster;
     int entry = get_entry(fp, logicalCluster);
+    
     read_cluster(fp, logicalCluster, cluster);
-    // printf("%d -> %d\n", firstLogicalCluster, MIN(fileSize, CLUSTER_SIZE));
+
     fwrite(cluster, MIN(fileSize, CLUSTER_SIZE), 1, destFp);
     fileSize -= CLUSTER_SIZE;
-    // fprintf(destFp, "%s", cluster);
 
     if(entry == 0x000){
         //printf("Unused\n");
@@ -732,7 +719,7 @@ void image_analyzer(FILE* fp){
     int clustersDadosLivre = fatLivre-(FAT_TABLE_SIZE-bootsector.quantSetoresDisco)+2;
     printf("Tabela FAT: %d/%d (%0.2f%%)\n", FAT_TABLE_SIZE-fatLivre, FAT_TABLE_SIZE, ((float)(FAT_TABLE_SIZE-fatLivre)/(FAT_TABLE_SIZE)*100));
     printf("Diretorio ROOT (%s): %d/%d (%0.2f%%)\n", MOUNT_POINT, bootsector.tamanhoRoot-rootLivre, bootsector.tamanhoRoot, ((float)(bootsector.tamanhoRoot-rootLivre)/(bootsector.tamanhoRoot)*100));
-    printf("Area de Dados: %d/%d (%0.2f%%)\n", bootsector.quantSetoresDisco-clustersDadosLivre, bootsector.quantSetoresDisco, ((float)(bootsector.quantSetoresDisco-clustersDadosLivre)/(bootsector.quantSetoresDisco)*100));
+    printf("Area de Dados: %d/%d (%0.2f%%)\n", bootsector.quantSetoresDisco-clustersDadosLivre, bootsector.quantSetoresDisco-33, ((float)(bootsector.quantSetoresDisco-clustersDadosLivre)/(bootsector.quantSetoresDisco-33)*100));
 }
 
 int main(int argc, char* argv[]){
