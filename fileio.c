@@ -56,7 +56,6 @@ void remove_cluster(FILE* fp, int logicalCluster){
 }
 
 void write_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
-    printf("Writing cluster at logicalCluster %d or physical %x(%d)\n", logicalCluster, (33+logicalCluster-2)*CLUSTER_SIZE, (33+logicalCluster-2)*CLUSTER_SIZE);
     fseek(fp, (33+logicalCluster-2)*CLUSTER_SIZE, SEEK_SET);
     fwrite(cluster, CLUSTER_SIZE, 1, fp);
 }
