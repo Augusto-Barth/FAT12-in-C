@@ -25,37 +25,35 @@ short get_entry(FILE* fp, int position){
 
 void write_entry(FILE* fp, int position, short entry){
     unsigned char full, half, buffer;
-    for(int curTable = 0; curTable < 2; curTable++){
-        if(position%2 == 0){
-            fseek(fp, CLUSTER_SIZE*fatTableSector[curTable] + (3*position)/2+1, SEEK_SET);
-            fread(&half, 1, 1, fp);
-            buffer = half&0b11110000;
-            buffer |= (entry&0b111100000000) >> 8;
-            fseek(fp, CLUSTER_SIZE*fatTableSector[curTable] + (3*position)/2+1, SEEK_SET);
-            fwrite(&buffer, 1, 1, fp);
+    if(position%2 == 0){
+        fseek(fp, CLUSTER_SIZE*FAT_TABLE1_SECTOR + (3*position)/2+1, SEEK_SET);
+        fread(&half, 1, 1, fp);
+        buffer = half&0b11110000;
+        buffer |= (entry&0b111100000000) >> 8;
+        fseek(fp, CLUSTER_SIZE*FAT_TABLE1_SECTOR + (3*position)/2+1, SEEK_SET);
+        fwrite(&buffer, 1, 1, fp);
 
-            fseek(fp, CLUSTER_SIZE*fatTableSector[curTable] + (3*position)/2, SEEK_SET);
-            fread(&full, 1, 1, fp);
-            buffer = full&0b00000000;
-            buffer |= (entry&0b000011111111);
-            fseek(fp, CLUSTER_SIZE*fatTableSector[curTable] + (3*position)/2, SEEK_SET);
-            fwrite(&buffer, 1, 1, fp);
-        }
-        else{
-            fseek(fp, CLUSTER_SIZE*fatTableSector[curTable] + (3*position)/2, SEEK_SET);
-            fread(&half, 1, 1, fp);
-            buffer = half&0b00001111;
-            buffer |= (entry&0b000000001111) << 4;
-            fseek(fp, CLUSTER_SIZE*fatTableSector[curTable] + (3*position)/2, SEEK_SET);
-            fwrite(&buffer, 1, 1, fp);
+        fseek(fp, CLUSTER_SIZE*FAT_TABLE1_SECTOR + (3*position)/2, SEEK_SET);
+        fread(&full, 1, 1, fp);
+        buffer = full&0b00000000;
+        buffer |= (entry&0b000011111111);
+        fseek(fp, CLUSTER_SIZE*FAT_TABLE1_SECTOR + (3*position)/2, SEEK_SET);
+        fwrite(&buffer, 1, 1, fp);
+    }
+    else{
+        fseek(fp, CLUSTER_SIZE*FAT_TABLE1_SECTOR + (3*position)/2, SEEK_SET);
+        fread(&half, 1, 1, fp);
+        buffer = half&0b00001111;
+        buffer |= (entry&0b000000001111) << 4;
+        fseek(fp, CLUSTER_SIZE*FAT_TABLE1_SECTOR + (3*position)/2, SEEK_SET);
+        fwrite(&buffer, 1, 1, fp);
 
-            fseek(fp, CLUSTER_SIZE*fatTableSector[curTable] + (3*position)/2+1, SEEK_SET);
-            fread(&full, 1, 1, fp);
-            buffer = full&0b00000000;
-            buffer |= (entry&0b111111110000) >> 4;
-            fseek(fp, CLUSTER_SIZE*fatTableSector[curTable] + (3*position)/2+1, SEEK_SET);
-            fwrite(&buffer, 1, 1, fp);
-        }
+        fseek(fp, CLUSTER_SIZE*FAT_TABLE1_SECTOR + (3*position)/2+1, SEEK_SET);
+        fread(&full, 1, 1, fp);
+        buffer = full&0b00000000;
+        buffer |= (entry&0b111111110000) >> 4;
+        fseek(fp, CLUSTER_SIZE*FAT_TABLE1_SECTOR + (3*position)/2+1, SEEK_SET);
+        fwrite(&buffer, 1, 1, fp);
     }
 }
 
