@@ -618,7 +618,7 @@ void print_details(FILE* fp, int dirSector, char* filename){
 }
 
 void format_image(FILE* fp){
-    for(int i = 0; i < CLUSTER_SIZE; i++)
+    for(int i = 0; i < FAT_TABLE_SIZE; i++)
         write_entry(fp, i, 0x000);
     unsigned char buffer[32] = {0};
     fseek(fp, ROOT_DIR_SECTOR*CLUSTER_SIZE, SEEK_SET);
