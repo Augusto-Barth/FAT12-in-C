@@ -10,7 +10,7 @@
 
 fat12_bs bootsector;
 
-int get_full_filename(fat12_dir directory, char* fullFilename){
+void get_full_filename(fat12_dir directory, char* fullFilename){
     memset(fullFilename, 0, 12);
 
     strcpy(fullFilename, directory.filename);
@@ -492,7 +492,6 @@ void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilena
     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE);
     char* filename = (char*)malloc(32);
     char* extension = (char*)malloc(32);
-    int dirNum = 0;
 
     FILE* srcFp = fopen(sourceFilename, "rb");
     if(srcFp == NULL){
@@ -521,9 +520,9 @@ void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilena
     strcpy(filename, strtok(fullFilename, "."));
     strcpy(extension, strtok(NULL, "."));
 
-    size_t tamanhoFilename = strlen(filename);
+    int tamanhoFilename = strlen(filename);
     if(tamanhoFilename > 8){
-        printf("Nome (%s) deve ter ate 8 caracteres (%ld)\n", filename, tamanhoFilename);
+        printf("Nome (%s) deve ter ate 8 caracteres (%d)\n", filename, tamanhoFilename);
         return;
     }
     strncpy(directory.filename, filename, 8);
@@ -568,8 +567,6 @@ void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilena
     directory.lastWriteTime = directory.creationTime = create_time(tm.tm_sec, tm.tm_min, tm.tm_hour);
 
     write_directory(fp, dirSector, firstFreeDirectoryNum, directory);
-
-    int numberOfClustersFile = (extFilesize+CLUSTER_SIZE-1)/CLUSTER_SIZE;
 
     int end = 0;
     int previousFreeFatPosition = firstFreeFatPosition;

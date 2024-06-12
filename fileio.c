@@ -61,7 +61,7 @@ void write_cluster(FILE* fp, int logicalCluster, unsigned char* cluster){
 }
 
 int read_ext_file(FILE* srcFp, unsigned char* cluster, int* remainingFileSize){
-    int size = 0, a;
+    int size = 0;
     memset(cluster, 0, CLUSTER_SIZE);
     while(size < CLUSTER_SIZE && ((*remainingFileSize)-->0)){
         fread(&(cluster[size++]), 1, 1, srcFp);

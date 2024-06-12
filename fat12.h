@@ -28,8 +28,8 @@ typedef struct fat12_bootsector
 
 typedef struct fat12_directory
 {
-    unsigned char filename[8+1]; // \0
-    unsigned char extension[3+1];
+    char filename[8+1]; // \0
+    char extension[3+1];
     unsigned char attributes;
     unsigned char reserved[2];
     short creationTime;
