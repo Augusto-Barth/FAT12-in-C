@@ -230,46 +230,31 @@ void print_directory_short(FILE* fp, int dirSector){
     }
 }
 
-void read_file(FILE* fp, int dirSector, unsigned char* filename){
-    fat12_dir directory;
-    fat12_dir_attr attributes;
-    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
-    char* fullFilename = (char*)malloc(12);
-    memset(cluster, 0, CLUSTER_SIZE+1);
+int find_file(FILE* fp, int dirSector, char* filename, fat12_dir* directory, fat12_dir_attr* attributes){
     int dirNum = 0, maxDirNum, entry;
-
-    to_upper(filename);
+    char* fullFilename = (char*)malloc(12);
 
     while(1){
         maxDirNum = get_max_directory_size(dirSector);
         while(dirNum < maxDirNum){
-            int filename_int = read_directory(fp, dirSector, dirNum, &directory);
+            int filename_int = read_directory(fp, dirSector, dirNum, directory);
             if(filename_int == 0xE5){
                 dirNum++;
                 continue;
             }
             else if(filename_int == 0x00){
-                printf("%s nao encontrado\n", filename);
                 break;
             }
 
-            get_full_filename(directory, fullFilename);
-            read_attributes(directory.attributes, &attributes);
+            get_full_filename(*directory, fullFilename);
+            read_attributes(directory->attributes, attributes);
 
             if(strcmp(filename, fullFilename)){
                 dirNum++;
                 continue;
             }
             
-            if(attributes.subdirectory){
-                printf("%s eh um diretorio\n", fullFilename);
-            }
-            else{
-                print_cluster_sequence(fp, directory.firstLogicalCluster, cluster);
-            }
-            free(cluster);
-            free(fullFilename);
-            return;
+            return 1;
         }
         if(dirSector == ROOT_DIR_SECTOR)
             break;
@@ -280,58 +265,49 @@ void read_file(FILE* fp, int dirSector, unsigned char* filename){
         dirNum = 0;
         dirSector = entry+33-2;
     }
+    return 0;
+}
+
+void read_file(FILE* fp, int dirSector, char* filename){
+    fat12_dir directory;
+    fat12_dir_attr attributes;
+    unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE+1);
+    memset(cluster, 0, CLUSTER_SIZE+1);
+
+    to_upper(filename);
+
+    if(!find_file(fp, dirSector, filename, &directory, &attributes)){
+        printf("%s nao encontrado\n", filename);
+        return;
+    }    
+
+    if(attributes.subdirectory){
+        printf("%s eh um diretorio\n", filename);
+    }
+    else{
+        print_cluster_sequence(fp, directory.firstLogicalCluster, cluster);
+    }
     free(cluster);
-    free(fullFilename);
     return;
 }
 
-void change_directory(FILE* fp, int* dirSector, unsigned char* directoryName){
+void change_directory(FILE* fp, int* dirSector, char* directoryName){
     fat12_dir directory;
     fat12_dir_attr attributes;
-    char* fullFilename = (char*)malloc(12);
-    int dirNum = 0, maxDirNum, entry;
 
     to_upper(directoryName);
 
-    while(1){
-        maxDirNum = get_max_directory_size(*dirSector);
-        while(dirNum < maxDirNum){
-            int filename_int = read_directory(fp, *dirSector, dirNum, &directory);
-            if(filename_int == 0xE5){
-                dirNum++;
-                continue;
-            }
-            else if(filename_int == 0x00){
-                printf("%s nao encontrado\n", directoryName);
-                break;
-            }
-
-            get_full_filename(directory, fullFilename);
-            read_attributes(directory.attributes, &attributes);
-
-            if(strcmp(directoryName, fullFilename)){
-                dirNum++;
-                continue;
-            }
+    if(!find_file(fp, *dirSector, directoryName, &directory, &attributes)){
+        printf("%s nao encontrado\n", directoryName);
+        return;
+    }   
             
-            if(attributes.subdirectory)
-                *dirSector = (directory.firstLogicalCluster == 0) ? ROOT_DIR_SECTOR : (directory.firstLogicalCluster+33-2);
-            else
-                printf("%s nao eh um diretorio\n", fullFilename);
-            
-            free(fullFilename);
-            return;
-        }
-        if(*dirSector == ROOT_DIR_SECTOR)
-            break;
-
-        entry = get_entry(fp, (*dirSector)-33+2);
-        if(entry >= 0xFF8)
-            break;
-        dirNum = 0;
-        *dirSector = entry+33-2;
+    if(attributes.subdirectory){
+        *dirSector = (directory.firstLogicalCluster == 0) ? ROOT_DIR_SECTOR : (directory.firstLogicalCluster+33-2);
     }
-    free(fullFilename);
+    else{
+        printf("%s nao eh um diretorio\n", directoryName);
+    }
     return;
 }
 
@@ -362,11 +338,11 @@ void remove_cluster_sequence(FILE* fp, int firstLogicalCluster){
 void remove_file(FILE* fp, int dirSector, char* filename){
     fat12_dir directory;
     fat12_dir_attr attributes;
+    fat12_dir directory_next;
     char* fullFilename = (char*)malloc(12);
     int dirNum = 0, maxDirNum, entry;
     unsigned char buffer[32] = {0};
 
-    fat12_dir directory_next;
     to_upper(filename);
 
     while(1){
@@ -454,58 +430,29 @@ void export_file(FILE* fp, int dirSector, char* filename, char* destinationFilen
     fat12_dir directory;
     fat12_dir_attr attributes;
     unsigned char* cluster = (unsigned char*)malloc(CLUSTER_SIZE);
-    char* fullFilename = (char*)malloc(12);
-    int dirNum = 0, maxDirNum, entry;
-
-    FILE* destFp = fopen(destinationFilename, "wb");
-    if(destFp == NULL){
-        printf("Nao foi possivel abrir %s\n", destinationFilename);
-        return;
-    }
+    FILE* destFp;
 
     to_upper(filename);
 
-    while(1){
-        maxDirNum = get_max_directory_size(dirSector);
-        while(dirNum < maxDirNum){
-            int filename_int = read_directory(fp, dirSector, dirNum, &directory);
-            if(filename_int == 0xE5){
-                dirNum++;
-                continue;
-            }
-            else if(filename_int == 0x00){
-                printf("%s nao encontrado\n", filename);
-                break;
-            }
-
-            get_full_filename(directory, fullFilename);
-            read_attributes(directory.attributes, &attributes);
-
-            if(strcmp(filename, fullFilename)){
-                dirNum++;
-                continue;
-            }
+    if(!find_file(fp, dirSector, filename, &directory, &attributes)){
+        printf("%s nao encontrado\n", filename);
+        return;
+    }   
             
-            if(attributes.subdirectory){
-                printf("%s eh um diretorio\n", fullFilename);
-            }
-            else{
-                export_cluster_sequence(fp, destFp, directory.firstLogicalCluster, cluster, directory.fileSize); 
-            }
-            break;
-        }
-        if(dirSector == ROOT_DIR_SECTOR)
-            break;
-
-        entry = get_entry(fp, dirSector-33+2);
-        if(entry >= 0xFF8)
-            break;
-        dirNum = 0;
-        dirSector = entry+33-2;
+    if(attributes.subdirectory){
+        printf("%s eh um diretorio\n", filename);
     }
-    free(fullFilename);
+    else{
+        destFp = fopen(destinationFilename, "wb");
+        if(destFp == NULL){
+            printf("Nao foi possivel abrir %s\n", destinationFilename);
+            return;
+        }
+        export_cluster_sequence(fp, destFp, directory.firstLogicalCluster, cluster, directory.fileSize); 
+        fclose(destFp);
+    }
+
     free(cluster);
-    fclose(destFp);
     return;
 }
 
@@ -648,50 +595,29 @@ void import_file(FILE* fp, int dirSector, char* fullFilename, char* sourceFilena
 void print_details(FILE* fp, int dirSector, char* filename){
     fat12_dir directory;
     fat12_dir_attr attributes;
-    char* fullFilename = (char*)malloc(12);
-    int dirNum = 0, maxDirNum;
 
     to_upper(filename);
-    
-    maxDirNum = get_max_directory_size(dirSector);
-    while(dirNum < maxDirNum){
-        int filename_int = read_directory(fp, dirSector, dirNum, &directory);
-        if(filename_int == 0xE5){
-            dirNum++;
-            continue;
-        }
-        else if(filename_int == 0x00){
-            printf("%s nao encontrado\n", filename);
-            break;
-        }
 
-        get_full_filename(directory, fullFilename);
-        read_attributes(directory.attributes, &attributes);
-
-        if(strcmp(filename, fullFilename)){
-            dirNum++;
-            continue;
-        }
-        
-        printf("Filename: %s\n", directory.filename);
-        printf("Extension: %s\n", directory.extension);
-        printf("Size: %d\n", directory.fileSize);
-        printf("First Logical Cluster: %d\n", directory.firstLogicalCluster);
-        printf("Archive: %s\n", attributes.archive ? "Yes" : "No");
-        printf("Hidden: %s\n", attributes.hidden ? "Yes" : "No");
-        printf("Read Only: %s\n", attributes.readOnly ? "Yes" : "No");
-        printf("Subdirectory: %s\n", attributes.subdirectory ? "Yes" : "No");
-        printf("System: %s\n", attributes.system ? "Yes" : "No");
-        printf("Volume Label: %s\n", attributes.volumeLabel ? "Yes" : "No");
-        printf("Creation: ");
-        print_date(directory.creationDate);
-        printf(" ");
-        print_time(directory.creationTime);
-        printf("\n");
-
-        free(fullFilename);
+    if(!find_file(fp, dirSector, filename, &directory, &attributes)){
+        printf("%s nao encontrado\n", filename);
         return;
-    }
+    }   
+    
+    printf("Filename: %s\n", directory.filename);
+    printf("Extension: %s\n", directory.extension);
+    printf("Size: %d\n", directory.fileSize);
+    printf("First Logical Cluster: %d\n", directory.firstLogicalCluster);
+    printf("Archive: %s\n", attributes.archive ? "Yes" : "No");
+    printf("Hidden: %s\n", attributes.hidden ? "Yes" : "No");
+    printf("Read Only: %s\n", attributes.readOnly ? "Yes" : "No");
+    printf("Subdirectory: %s\n", attributes.subdirectory ? "Yes" : "No");
+    printf("System: %s\n", attributes.system ? "Yes" : "No");
+    printf("Volume Label: %s\n", attributes.volumeLabel ? "Yes" : "No");
+    printf("Creation: ");
+    print_date(directory.creationDate);
+    printf(" ");
+    print_time(directory.creationTime);
+    printf("\n");
 }
 
 void format_image(FILE* fp){
@@ -704,7 +630,7 @@ void format_image(FILE* fp){
     }
 }
 
-void image_analyzer(FILE* fp){
+void analyze_image(FILE* fp){
     int fatLivre = get_free_clusters(fp);
     int rootLivre = get_free_root_dir(fp);
     int clustersDadosLivre = fatLivre-(FAT_TABLE_SIZE-bootsector.quantSetoresDisco)+2;
@@ -789,7 +715,7 @@ int main(int argc, char* argv[]){
             import_file(arqFat, currentWorkingDirSector, argumento, argumento2);
         }
         else if(!strcmp(comando, "dsk")){
-            image_analyzer(arqFat);
+            analyze_image(arqFat);
         }
         else if(!strcmp(comando, "format")){
             red();
